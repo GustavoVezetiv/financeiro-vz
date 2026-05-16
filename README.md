@@ -58,13 +58,14 @@ Implemented in the foundation phase:
 - Placeholder routes for all planned MVP modules
 - Reusable base UI components
 - Isolated static mock data in `src/lib/mock-data.ts`
+- Supabase client utilities
+- Supabase Auth login and signup UI
+- Protected dashboard routes
+- Logged user indicator and logout action
+- Initial SQL schema with Row Level Security policies
 
 Not implemented yet:
 
-- Supabase Auth
-- Supabase client
-- Database tables
-- Row Level Security policies
 - CRUD operations
 - Imports
 - Real business logic
@@ -102,16 +103,104 @@ Format files:
 npm run format
 ```
 
+## Supabase Setup
+
+Create a Supabase project:
+
+1. Go to the Supabase dashboard.
+2. Create a new project.
+3. Copy the project URL and anon public key from Project Settings > API.
+4. Create a local environment file:
+
+```bash
+cp .env.example .env.local
+```
+
+Required variables:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+```
+
+Do not commit `.env.local`.
+
+## Database Schema
+
+The initial schema lives at:
+
+```bash
+supabase/migrations/202605160001_initial_auth_schema_rls.sql
+```
+
+Run it in Supabase SQL Editor or through the Supabase CLI if the project is linked.
+
+The schema creates:
+
+- `profiles`
+- `people`
+- `categories`
+- `accounts_payable`
+- `income_sources`
+- `credit_cards`
+- `credit_card_invoices`
+- `credit_card_transactions`
+- `reimbursements`
+- `installments`
+- `payment_plans`
+- `payment_plan_items`
+- `planned_purchases`
+- `goals`
+- `notes`
+- `import_batches`
+- `import_rows`
+
+It also creates:
+
+- Financial distinction enums for real income, reimbursements, third-party money, ownership type, risk, status, and payment decisions.
+- A reusable `set_updated_at()` trigger function.
+- `updated_at` triggers for all user-owned tables.
+- Row Level Security policies for select, insert, update, and delete.
+- A `handle_new_user()` trigger to create a profile when a Supabase Auth user is created.
+- `create_default_categories_for_current_user()` for optional per-user default categories after login.
+
+The default category helper is user safe because it uses `auth.uid()` and does not create global shared data.
+
+## Authentication
+
+The `/login` route supports:
+
+- Email/password sign in.
+- Email/password sign up.
+- Loading state.
+- Error messages.
+- Missing Supabase configuration warning.
+
+The `/dashboard` route and all dashboard subroutes are protected in the server layout. If no authenticated user is found, the app redirects to `/login`.
+
+The app shell displays the logged user email and includes a logout button.
+
+## Row Level Security
+
+Every user-owned table includes `user_id`.
+
+RLS policies enforce:
+
+- Users can select only rows where `user_id = auth.uid()`.
+- Users can insert only rows where `user_id = auth.uid()`.
+- Users can update only rows where `user_id = auth.uid()`.
+- Users can delete only rows where `user_id = auth.uid()`.
+
+No public read policies are created.
+
 ## Next Planned Step
 
-The next planned step is Supabase database and authentication setup:
+The next planned step is implementing the first CRUD modules:
 
-1. Configure Supabase project credentials.
-2. Add Supabase Auth.
-3. Create the `profiles` table.
-4. Create the initial database schema.
-5. Enable Row Level Security.
-6. Add policies so each user can only access their own data.
+1. People
+2. Categories
+3. Accounts payable
+4. Income sources
 
 ## Development Philosophy
 
