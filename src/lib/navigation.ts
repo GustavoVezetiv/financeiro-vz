@@ -9,6 +9,7 @@ export const navigationItems: NavigationItem[] = [
   { label: "Contas", href: "/dashboard/accounts" },
   { label: "Receitas", href: "/dashboard/income" },
   { label: "Pessoas", href: "/dashboard/people" },
+  { label: "Categorias", href: "/dashboard/categories" },
   { label: "Cartões", href: "/dashboard/cards" },
   { label: "Faturas", href: "/dashboard/invoices" },
   { label: "Reembolsos", href: "/dashboard/reimbursements", badge: "chave" },
@@ -21,4 +22,3 @@ export const navigationItems: NavigationItem[] = [
   { label: "Notas", href: "/dashboard/notes" },
   { label: "Configurações", href: "/dashboard/settings" },
 ];
-

@@ -1,10 +1,9 @@
-import { ModulePlaceholderPage } from "@/components/modules/module-placeholder-page";
+import { PeopleCrud } from "@/features/people/components/people-crud";
 
 export const metadata = {
   title: "Pessoas",
 };
 
 export default function PeoplePage() {
-  return <ModulePlaceholderPage moduleKey="people" />;
+  return <PeopleCrud />;
 }
-

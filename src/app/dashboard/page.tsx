@@ -1,18 +1,64 @@
-import { DataTablePlaceholder } from "@/components/ui/data-table-placeholder";
 import { PageHeader } from "@/components/ui/page-header";
 import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
-import {
-  dashboardDecisionSections,
-  dashboardStats,
-  upcomingFlowRows,
-} from "@/lib/mock-data";
+import { formatCurrency, formatDate, todayISO } from "@/features/shared/format";
+import { createClient } from "@/lib/supabase/server";
+import type {
+  AccountPayable,
+  CreditCardInvoice,
+  CreditCardTransaction,
+  IncomeSource,
+  Reimbursement,
+} from "@/lib/supabase/types";
 
 export const metadata = {
   title: "Dashboard",
 };
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const supabase = await createClient();
+
+  if (!supabase) {
+    return <DashboardError message="Supabase não está configurado." />;
+  }
+
+  const [accountsResult, incomeResult, invoicesResult, transactionsResult, reimbursementsResult] =
+    await Promise.all([
+    supabase.from("accounts_payable").select("*"),
+    supabase.from("income_sources").select("*"),
+    supabase.from("credit_card_invoices").select("*"),
+    supabase.from("credit_card_transactions").select("*"),
+    supabase.from("reimbursements").select("*"),
+  ]);
+
+  if (
+    accountsResult.error ||
+    incomeResult.error ||
+    invoicesResult.error ||
+    transactionsResult.error ||
+    reimbursementsResult.error
+  ) {
+    return (
+      <DashboardError
+        message={
+          accountsResult.error?.message ??
+          incomeResult.error?.message ??
+          invoicesResult.error?.message ??
+          transactionsResult.error?.message ??
+          reimbursementsResult.error?.message ??
+          "Erro ao carregar dados."
+        }
+      />
+    );
+  }
+
+  const accounts = accountsResult.data ?? [];
+  const incomeSources = incomeResult.data ?? [];
+  const invoices = invoicesResult.data ?? [];
+  const transactions = transactionsResult.data ?? [];
+  const reimbursements = reimbursementsResult.data ?? [];
+  const summary = buildDashboardSummary(accounts, incomeSources, invoices, transactions, reimbursements);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -22,26 +68,244 @@ export default function DashboardPage() {
       />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {dashboardStats.map((stat) => (
-          <StatCard key={stat.label} {...stat} />
-        ))}
+        <StatCard
+          label="Contas pendentes"
+          value={formatCurrency(summary.pendingAccounts)}
+          helper="Contas abertas que ainda pressionam o caixa."
+          tone="warning"
+        />
+        <StatCard
+          label="Entradas previstas"
+          value={formatCurrency(summary.expectedRealIncome)}
+          helper="Somente renda real prevista."
+          tone="success"
+        />
+        <StatCard
+          label="Saldo projetado"
+          value={formatCurrency(summary.projectedBalance)}
+          helper="Inclui reembolsos e dinheiro de terceiros, que não são renda livre."
+          tone="info"
+        />
+        <StatCard
+          label="Prioridade alta"
+          value={formatCurrency(summary.highPriorityAccounts)}
+          helper="Contas altas ou críticas."
+          tone="danger"
+        />
+        <StatCard
+          label="Fatura crítica"
+          value={formatCurrency(summary.criticalInvoiceAmount)}
+          helper="Fatura aberta, parcial ou atrasada mais pesada."
+          tone={summary.criticalInvoiceAmount > 0 ? "danger" : "neutral"}
+        />
+        <StatCard
+          label="Reembolsos pendentes"
+          value={formatCurrency(summary.openReimbursements)}
+          helper="Pix esperado para cobrir despesas anteriores."
+          tone="warning"
+        />
+        <StatCard
+          label="Dinheiro de terceiros em aberto"
+          value={formatCurrency(summary.thirdPartyOpenAmount)}
+          helper="Lançamentos de terceiros ou família ainda vinculados."
+          tone="warning"
+        />
+        <StatCard
+          label="Custo pessoal líquido estimado"
+          value={formatCurrency(summary.estimatedNetPersonalCost)}
+          helper="Faturas abertas menos reembolsos esperados."
+          tone="info"
+        />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        {dashboardDecisionSections.map((section) => (
-          <SectionCard key={section.title} title={section.title} description={section.description}>
-            <p className="text-sm leading-6 text-ink-600">{section.content}</p>
-          </SectionCard>
-        ))}
+        <SectionCard title="Atenção agora" description="O que pede decisão primeiro.">
+          <p className="text-sm leading-6 text-ink-600">
+            Existem {summary.pendingCount} contas pendentes e {summary.overdueCount} atrasadas.
+            Priorize contas críticas antes de assumir novas compras.
+          </p>
+        </SectionCard>
+        <SectionCard
+          title="Regra do saldo projetado"
+          description="Projeção útil, mas com separação conceitual."
+        >
+          <p className="text-sm leading-6 text-ink-600">
+            O saldo projetado soma renda real, reembolsos e dinheiro de terceiros menos contas
+            pendentes. Reembolsos e valores de terceiros melhoram o caixa, mas não são dinheiro
+            livre para gastar.
+          </p>
+        </SectionCard>
+        <SectionCard title="Risco do mês" description="Faturas e dinheiro vinculado em aberto.">
+          <p className="text-sm leading-6 text-ink-600">
+            Há {summary.openInvoiceCount} faturas abertas ou atrasadas e {summary.openReimbursementCount} reembolsos pendentes.
+            O custo pessoal líquido estimado ajuda a enxergar o impacto real depois dos valores vinculados.
+          </p>
+        </SectionCard>
       </section>
 
-      <DataTablePlaceholder
-        title="Fluxo dos próximos dias"
-        description="Prévia visual dos próximos movimentos. Os dados abaixo são mockados e serão substituídos por Supabase depois."
-        columns={["Data", "Tipo", "Descrição", "Valor", "Status"]}
-        rows={upcomingFlowRows}
-      />
+      <SectionCard title="Fluxo dos próximos dias" description="Contas e entradas previstas mais próximas.">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600">
+              <tr>
+                <th className="px-4 py-3">Data</th>
+                <th className="px-4 py-3">Tipo</th>
+                <th className="px-4 py-3">Descrição</th>
+                <th className="px-4 py-3">Valor</th>
+                <th className="px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-950/10">
+              {summary.flowRows.map((row) => (
+                <tr key={`${row.type}-${row.description}-${row.date}`}>
+                  <td className="px-4 py-3 text-ink-600">{formatDate(row.date)}</td>
+                  <td className="px-4 py-3 text-ink-600">{row.type}</td>
+                  <td className="px-4 py-3 font-medium text-ink-950">{row.description}</td>
+                  <td className="px-4 py-3 text-ink-950">{formatCurrency(row.amount)}</td>
+                  <td className="px-4 py-3 text-ink-600">{row.status}</td>
+                </tr>
+              ))}
+              {summary.flowRows.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-6 text-sm text-ink-600" colSpan={5}>
+                    Sem contas ou entradas previstas para exibir.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
     </div>
   );
 }
 
+function DashboardError({ message }: { message: string }) {
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Visão mensal"
+        title="Dashboard de decisão"
+        description="Não foi possível carregar os dados do dashboard."
+      />
+      <SectionCard title="Erro de banco de dados">
+        <p className="text-sm text-danger-600">{message}</p>
+      </SectionCard>
+    </div>
+  );
+}
+
+function buildDashboardSummary(
+  accounts: AccountPayable[],
+  incomeSources: IncomeSource[],
+  invoices: CreditCardInvoice[],
+  transactions: CreditCardTransaction[],
+  reimbursements: Reimbursement[],
+) {
+  const today = todayISO();
+  const nextWeek = new Date();
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  const nextWeekISO = nextWeek.toISOString().slice(0, 10);
+
+  const pendingAccounts = accounts
+    .filter((account) => account.status === "pending" || account.status === "overdue")
+    .reduce((total, account) => total + Number(account.amount), 0);
+
+  const highPriorityAccounts = accounts
+    .filter((account) => account.priority === "high" || account.priority === "critical")
+    .reduce((total, account) => total + Number(account.amount), 0);
+
+  const expectedRealIncome = incomeSources
+    .filter((income) => income.status === "expected" && income.inflow_kind === "real_income")
+    .reduce((total, income) => total + Number(income.amount), 0);
+
+  const expectedReimbursements = incomeSources
+    .filter((income) => income.status === "expected" && income.inflow_kind === "reimbursement")
+    .reduce((total, income) => total + Number(income.amount), 0);
+
+  const expectedThirdPartyMoney = incomeSources
+    .filter((income) => income.status === "expected" && income.inflow_kind === "third_party_money")
+    .reduce((total, income) => total + Number(income.amount), 0);
+
+  const projectedBalance =
+    expectedRealIncome + expectedReimbursements + expectedThirdPartyMoney - pendingAccounts;
+
+  const openInvoices = invoices.filter((invoice) =>
+    ["open", "closed", "partial", "overdue"].includes(invoice.status),
+  );
+
+  const criticalInvoiceAmount = openInvoices.reduce(
+    (max, invoice) => Math.max(max, Number(invoice.total_amount) - Number(invoice.paid_amount)),
+    0,
+  );
+
+  const openReimbursements = reimbursements
+    .filter((item) => ["expected", "partial", "late"].includes(item.status))
+    .reduce((total, item) => total + Number(item.expected_amount) - Number(item.received_amount), 0);
+
+  const thirdPartyOpenAmount = transactions
+    .filter(
+      (transaction) =>
+        transaction.is_reimbursable ||
+        ["third_party", "shared", "family"].includes(transaction.ownership_type),
+    )
+    .reduce((total, transaction) => total + Number(transaction.amount), 0);
+
+  const openInvoiceTotal = openInvoices.reduce(
+    (total, invoice) => total + Number(invoice.total_amount) - Number(invoice.paid_amount),
+    0,
+  );
+
+  const estimatedNetPersonalCost = Math.max(openInvoiceTotal - openReimbursements, 0);
+
+  const accountRows = accounts
+    .filter(
+      (account) =>
+        (account.status === "pending" || account.status === "overdue") &&
+        account.due_date >= today &&
+        account.due_date <= nextWeekISO,
+    )
+    .map((account) => ({
+      date: account.due_date,
+      type: "Conta",
+      description: account.title,
+      amount: Number(account.amount),
+      status: account.status === "overdue" ? "Atrasado" : "Pendente",
+    }));
+
+  const incomeRows = incomeSources
+    .filter(
+      (income) =>
+        income.status === "expected" &&
+        income.expected_date &&
+        income.expected_date >= today &&
+        income.expected_date <= nextWeekISO,
+    )
+    .map((income) => ({
+      date: income.expected_date ?? today,
+      type: income.inflow_kind === "real_income" ? "Receita" : "Entrada vinculada",
+      description: income.name,
+      amount: Number(income.amount),
+      status: income.inflow_kind === "real_income" ? "Prevista" : "Não é renda livre",
+    }));
+
+  return {
+    pendingAccounts,
+    highPriorityAccounts,
+    expectedRealIncome,
+    expectedReimbursements,
+    expectedThirdPartyMoney,
+    projectedBalance,
+    criticalInvoiceAmount,
+    openReimbursements,
+    thirdPartyOpenAmount,
+    estimatedNetPersonalCost,
+    openInvoiceCount: openInvoices.length,
+    openReimbursementCount: reimbursements.filter((item) =>
+      ["expected", "partial", "late"].includes(item.status),
+    ).length,
+    pendingCount: accounts.filter((account) => account.status === "pending").length,
+    overdueCount: accounts.filter((account) => account.status === "overdue").length,
+    flowRows: [...accountRows, ...incomeRows].sort((a, b) => a.date.localeCompare(b.date)),
+  };
+}

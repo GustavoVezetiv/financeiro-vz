@@ -1,10 +1,9 @@
-import { ModulePlaceholderPage } from "@/components/modules/module-placeholder-page";
+import { InvoicesCrud } from "@/features/invoices/components/invoices-crud";
 
 export const metadata = {
   title: "Faturas",
 };
 
 export default function InvoicesPage() {
-  return <ModulePlaceholderPage moduleKey="invoices" />;
+  return <InvoicesCrud />;
 }
-

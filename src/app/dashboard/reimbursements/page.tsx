@@ -1,10 +1,9 @@
-import { ModulePlaceholderPage } from "@/components/modules/module-placeholder-page";
+import { ReimbursementsCrud } from "@/features/reimbursements/components/reimbursements-crud";
 
 export const metadata = {
   title: "Reembolsos",
 };
 
 export default function ReimbursementsPage() {
-  return <ModulePlaceholderPage moduleKey="reimbursements" />;
+  return <ReimbursementsCrud />;
 }
-

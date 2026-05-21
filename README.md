@@ -63,13 +63,21 @@ Implemented in the foundation phase:
 - Protected dashboard routes
 - Logged user indicator and logout action
 - Initial SQL schema with Row Level Security policies
+- CRUD for people
+- CRUD for categories
+- CRUD for accounts payable
+- CRUD for income sources
+- CRUD for credit cards
+- CRUD for credit card invoices
+- Invoice transaction management
+- Reimbursement tracking linked to people and card transactions
+- Dashboard summaries using real account, income, invoice, transaction and reimbursement data
 
 Not implemented yet:
 
-- CRUD operations
 - Imports
-- Real business logic
-- Persistence
+- Installments module
+- Payment simulator
 
 ## Development Setup
 
@@ -166,6 +174,32 @@ It also creates:
 
 The default category helper is user safe because it uses `auth.uid()` and does not create global shared data.
 
+An incremental CRUD migration also lives at:
+
+```bash
+supabase/migrations/202605200001_extend_foundation_crud_fields.sql
+```
+
+Run this migration after the initial schema. It adds the fields used by the first CRUD screens:
+
+- People: `email`, `phone`
+- Categories: `icon`, `is_default`
+- Accounts payable: planned payment method, delay flags, delay risk and notes
+- Income sources: person, description, confidence, received date and notes
+
+The credit card and reimbursement migration lives at:
+
+```bash
+supabase/migrations/202605200002_extend_cards_invoices_reimbursements.sql
+```
+
+Run it after the CRUD migration. It adds safe fields and enum values used by the card, invoice, transaction and reimbursement screens:
+
+- Credit cards: `brand`, `notes`
+- Credit card invoices: `notes`, additional invoice statuses
+- Credit card transactions: shared/family ownership and installment numbers
+- Reimbursements: `income_source_id`, `received_date` and indexes for linked lookups
+
 ## Authentication
 
 The `/login` route supports:
@@ -193,14 +227,66 @@ RLS policies enforce:
 
 No public read policies are created.
 
+## Implemented CRUD Modules
+
+The first real CRUD set is implemented under authenticated dashboard routes:
+
+- `/dashboard/people`
+- `/dashboard/categories`
+- `/dashboard/accounts`
+- `/dashboard/income`
+- `/dashboard/cards`
+- `/dashboard/invoices`
+- `/dashboard/invoices/[id]`
+- `/dashboard/reimbursements`
+
+These pages persist data in Supabase and rely on RLS for user isolation. Inserts send the authenticated user's `user_id`, and reads/updates/deletes are still constrained by database policies.
+
+Current tables used by the app:
+
+- `people`
+- `categories`
+- `accounts_payable`
+- `income_sources`
+- `credit_cards`
+- `credit_card_invoices`
+- `credit_card_transactions`
+- `reimbursements`
+
+The dashboard now reads:
+
+- `accounts_payable`
+- `income_sources`
+- `credit_card_invoices`
+- `credit_card_transactions`
+- `reimbursements`
+
+Reimbursements and third-party money are displayed separately from real income. The projected balance can include them for cash-flow visibility, but the UI warns that they are not free income. Invoice transaction ownership distinguishes personal expenses from third-party, shared and family expenses.
+
+## Testing CRUD
+
+1. Configure `.env.local` with Supabase URL and anon key.
+2. Run all SQL migrations in Supabase.
+3. Start the app:
+
+```bash
+npm run dev
+```
+
+4. Sign up or sign in at `/login`.
+5. Open `/dashboard/people`, `/dashboard/categories`, `/dashboard/accounts`, `/dashboard/income`, `/dashboard/cards`, `/dashboard/invoices`, and `/dashboard/reimbursements`.
+6. Create, edit, filter and delete records.
+7. Create a card, an invoice, and a linked invoice transaction.
+8. Mark a transaction as third-party, shared or family and create an expected reimbursement.
+9. Confirm the dashboard summary changes after creating accounts, income, invoices, transactions and reimbursements.
+
 ## Next Planned Step
 
-The next planned step is implementing the first CRUD modules:
+The next planned step is implementing:
 
-1. People
-2. Categories
-3. Accounts payable
-4. Income sources
+1. Installments
+2. Payment planning
+3. Payment decision scenarios
 
 ## Development Philosophy
 

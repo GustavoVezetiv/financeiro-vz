@@ -1,8 +1,15 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type FinancialInflowKind = "real_income" | "reimbursement" | "third_party_money";
-export type OwnershipType = "personal" | "reimbursable" | "third_party";
-export type InvoicePaymentStatus = "open" | "closed" | "paid" | "overdue" | "canceled";
+export type OwnershipType = "personal" | "reimbursable" | "third_party" | "shared" | "family";
+export type InvoicePaymentStatus =
+  | "open"
+  | "closed"
+  | "paid"
+  | "partial"
+  | "overdue"
+  | "canceled"
+  | "cancelled";
 export type PaymentDecision = "pay_now" | "wait" | "parcel" | "negotiate" | "pay_by_card";
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
@@ -26,6 +33,8 @@ export type UserOwnedRow = {
 export type Person = UserOwnedRow & {
   name: string;
   relationship_type: string;
+  email: string | null;
+  phone: string | null;
   pix_key: string | null;
   notes: string | null;
   is_active: boolean;
@@ -36,6 +45,8 @@ export type Category = UserOwnedRow & {
   type: string;
   parent_category_id: string | null;
   color: string | null;
+  icon: string | null;
+  is_default: boolean;
   is_active: boolean;
 };
 
@@ -52,11 +63,17 @@ export type AccountPayable = UserOwnedRow & {
   is_recurring: boolean;
   recurrence_rule: Json | null;
   paid_at: string | null;
+  payment_method_planned: string;
+  can_delay: boolean;
+  delay_risk: RiskLevel;
+  notes: string | null;
 };
 
 export type IncomeSource = UserOwnedRow & {
   category_id: string | null;
+  person_id: string | null;
   name: string;
+  description: string | null;
   source_type: string;
   inflow_kind: FinancialInflowKind;
   amount: number;
@@ -65,16 +82,21 @@ export type IncomeSource = UserOwnedRow & {
   recurrence_rule: Json | null;
   status: string;
   received_at: string | null;
+  received_date: string | null;
+  confidence: string;
+  notes: string | null;
 };
 
 export type CreditCard = UserOwnedRow & {
   name: string;
   issuer: string | null;
+  brand: string | null;
   last_four_digits: string | null;
   limit_amount: number | null;
   closing_day: number | null;
   due_day: number | null;
   cashback_rate: number;
+  notes: string | null;
   is_active: boolean;
 };
 
@@ -90,6 +112,7 @@ export type CreditCardInvoice = UserOwnedRow & {
   third_party_amount: number;
   paid_amount: number;
   paid_at: string | null;
+  notes: string | null;
 };
 
 export type CreditCardTransaction = UserOwnedRow & {
@@ -106,6 +129,8 @@ export type CreditCardTransaction = UserOwnedRow & {
   is_reimbursable: boolean;
   reimbursement_status: string;
   installment_group_id: string | null;
+  installment_number: number | null;
+  installment_total: number | null;
   notes: string | null;
 };
 
@@ -116,6 +141,7 @@ export type Reimbursement = UserOwnedRow & {
   source_id: string | null;
   credit_card_transaction_id: string | null;
   account_payable_id: string | null;
+  income_source_id: string | null;
   credit_card_invoice_id: string | null;
   description: string | null;
   expected_amount: number;
@@ -123,6 +149,7 @@ export type Reimbursement = UserOwnedRow & {
   status: string;
   expected_date: string | null;
   received_at: string | null;
+  received_date: string | null;
   pix_reference: string | null;
   notes: string | null;
 };
@@ -259,7 +286,12 @@ export type Database = {
       import_rows: SupabaseTable<ImportRow>;
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      create_default_categories_for_current_user: {
+        Args: Record<string, never>;
+        Returns: void;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
