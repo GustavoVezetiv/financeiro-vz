@@ -1,6 +1,10 @@
+import Link from "next/link";
+
+import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
+import { calculatePaymentPlanScenario } from "@/features/payment-plans/simulator";
 import { formatCurrency, formatDate, todayISO } from "@/features/shared/format";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -8,6 +12,9 @@ import type {
   CreditCardInvoice,
   CreditCardTransaction,
   IncomeSource,
+  Installment,
+  PaymentPlan,
+  PaymentPlanItem,
   Reimbursement,
 } from "@/lib/supabase/types";
 
@@ -22,21 +29,39 @@ export default async function DashboardPage() {
     return <DashboardError message="Supabase não está configurado." />;
   }
 
-  const [accountsResult, incomeResult, invoicesResult, transactionsResult, reimbursementsResult] =
+  const [
+    accountsResult,
+    incomeResult,
+    invoicesResult,
+    transactionsResult,
+    reimbursementsResult,
+    installmentsResult,
+    activePlanResult,
+  ] =
     await Promise.all([
     supabase.from("accounts_payable").select("*"),
     supabase.from("income_sources").select("*"),
     supabase.from("credit_card_invoices").select("*"),
     supabase.from("credit_card_transactions").select("*"),
     supabase.from("reimbursements").select("*"),
+    supabase.from("installments").select("*"),
+    supabase.from("payment_plans").select("*").eq("status", "active").order("reference_month", { ascending: false }).limit(1),
   ]);
+
+  const activePlan = activePlanResult.data?.[0] ?? null;
+  const activePlanItemsResult = activePlan
+    ? await supabase.from("payment_plan_items").select("*").eq("payment_plan_id", activePlan.id)
+    : { data: [], error: null };
 
   if (
     accountsResult.error ||
     incomeResult.error ||
     invoicesResult.error ||
     transactionsResult.error ||
-    reimbursementsResult.error
+    reimbursementsResult.error ||
+    installmentsResult.error ||
+    activePlanResult.error ||
+    activePlanItemsResult.error
   ) {
     return (
       <DashboardError
@@ -46,6 +71,9 @@ export default async function DashboardPage() {
           invoicesResult.error?.message ??
           transactionsResult.error?.message ??
           reimbursementsResult.error?.message ??
+          installmentsResult.error?.message ??
+          activePlanResult.error?.message ??
+          activePlanItemsResult.error?.message ??
           "Erro ao carregar dados."
         }
       />
@@ -57,7 +85,18 @@ export default async function DashboardPage() {
   const invoices = invoicesResult.data ?? [];
   const transactions = transactionsResult.data ?? [];
   const reimbursements = reimbursementsResult.data ?? [];
-  const summary = buildDashboardSummary(accounts, incomeSources, invoices, transactions, reimbursements);
+  const installments = installmentsResult.data ?? [];
+  const activePlanItems = activePlanItemsResult.data ?? [];
+  const summary = buildDashboardSummary(
+    accounts,
+    incomeSources,
+    invoices,
+    transactions,
+    reimbursements,
+    installments,
+    activePlan,
+    activePlanItems,
+  );
 
   return (
     <div className="space-y-6">
@@ -119,6 +158,27 @@ export default async function DashboardPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
+        <SectionCard title="Plano ativo do mês" description="Resumo do cenário escolhido.">
+          {activePlan ? (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-ink-950">{activePlan.name}</p>
+                <p className="mt-1 text-sm leading-6 text-ink-600">
+                  {activePlan.description ?? "Plano ativo para decisões do mês."}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <StatCard label="Pagar agora" value={formatCurrency(summary.activePlanPayNow)} helper="Saída imediata." tone="danger" />
+                <StatCard label="Próxima fatura" value={formatCurrency(summary.activePlanNextInvoicePressure)} helper="Cartão + parcelas." tone="warning" />
+              </div>
+              <Link className="text-sm font-semibold text-mint-600 hover:text-mint-700" href={`/dashboard/payment-plans/${activePlan.id}`}>
+                Abrir plano ativo
+              </Link>
+            </div>
+          ) : (
+            <EmptyState title="Nenhum plano ativo" description="Crie ou ative um plano de pagamento para ver o cenário do mês aqui." />
+          )}
+        </SectionCard>
         <SectionCard title="Atenção agora" description="O que pede decisão primeiro.">
           <p className="text-sm leading-6 text-ink-600">
             Existem {summary.pendingCount} contas pendentes e {summary.overdueCount} atrasadas.
@@ -139,6 +199,13 @@ export default async function DashboardPage() {
           <p className="text-sm leading-6 text-ink-600">
             Há {summary.openInvoiceCount} faturas abertas ou atrasadas e {summary.openReimbursementCount} reembolsos pendentes.
             O custo pessoal líquido estimado ajuda a enxergar o impacto real depois dos valores vinculados.
+          </p>
+        </SectionCard>
+        <SectionCard title="Resumo do plano ativo" description="Risco, reembolso e parcelamento.">
+          <p className="text-sm leading-6 text-ink-600">
+            Itens críticos no plano: {formatCurrency(summary.activePlanCriticalRisk)}. Dependência de reembolsos:
+            {" "}{formatCurrency(summary.activePlanReimbursementDependency)}. Parcelamentos ativos somam
+            {" "}{formatCurrency(summary.activeInstallmentMonthlyAmount)} por mês.
           </p>
         </SectionCard>
       </section>
@@ -201,6 +268,9 @@ function buildDashboardSummary(
   invoices: CreditCardInvoice[],
   transactions: CreditCardTransaction[],
   reimbursements: Reimbursement[],
+  installments: Installment[],
+  activePlan: PaymentPlan | null,
+  activePlanItems: PaymentPlanItem[],
 ) {
   const today = todayISO();
   const nextWeek = new Date();
@@ -257,6 +327,18 @@ function buildDashboardSummary(
   );
 
   const estimatedNetPersonalCost = Math.max(openInvoiceTotal - openReimbursements, 0);
+  const activeInstallmentMonthlyAmount = installments
+    .filter((item) => item.status === "active")
+    .reduce((total, item) => total + Number(item.installment_amount), 0);
+
+  const activePlanSimulation = activePlan
+    ? calculatePaymentPlanScenario({
+        items: activePlanItems,
+        incomeSources,
+        reimbursements,
+        installments,
+      })
+    : null;
 
   const accountRows = accounts
     .filter(
@@ -300,6 +382,11 @@ function buildDashboardSummary(
     openReimbursements,
     thirdPartyOpenAmount,
     estimatedNetPersonalCost,
+    activePlanPayNow: activePlanSimulation?.totalPayNow ?? 0,
+    activePlanNextInvoicePressure: activePlanSimulation?.nextInvoicePressure ?? activeInstallmentMonthlyAmount,
+    activePlanCriticalRisk: activePlanSimulation?.criticalRiskAmount ?? 0,
+    activePlanReimbursementDependency: activePlanSimulation?.reimbursementsExpected ?? openReimbursements,
+    activeInstallmentMonthlyAmount,
     openInvoiceCount: openInvoices.length,
     openReimbursementCount: reimbursements.filter((item) =>
       ["expected", "partial", "late"].includes(item.status),

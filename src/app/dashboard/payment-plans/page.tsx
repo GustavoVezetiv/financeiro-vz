@@ -1,10 +1,9 @@
-import { ModulePlaceholderPage } from "@/components/modules/module-placeholder-page";
+import { PaymentPlansCrud } from "@/features/payment-plans/components/payment-plans-crud";
 
 export const metadata = {
   title: "Plano de pagamento",
 };
 
 export default function PaymentPlansPage() {
-  return <ModulePlaceholderPage moduleKey="payment-plans" />;
+  return <PaymentPlansCrud />;
 }
-

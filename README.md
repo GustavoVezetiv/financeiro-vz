@@ -71,13 +71,16 @@ Implemented in the foundation phase:
 - CRUD for credit card invoices
 - Invoice transaction management
 - Reimbursement tracking linked to people and card transactions
-- Dashboard summaries using real account, income, invoice, transaction and reimbursement data
+- CRUD for installments
+- Payment plans and payment plan items
+- Simple deterministic payment decision simulator
+- Dashboard summaries using real account, income, invoice, transaction, reimbursement, installment and payment plan data
 
 Not implemented yet:
 
 - Imports
-- Installments module
-- Payment simulator
+- Import templates
+- CSV/XLSX import preview
 
 ## Development Setup
 
@@ -200,6 +203,19 @@ Run it after the CRUD migration. It adds safe fields and enum values used by the
 - Credit card transactions: shared/family ownership and installment numbers
 - Reimbursements: `income_source_id`, `received_date` and indexes for linked lookups
 
+The installments and payment plans migration lives at:
+
+```bash
+supabase/migrations/202605200003_extend_installments_payment_plans.sql
+```
+
+Run it after the credit card migration. It adds fields and enum values used by installments, payment plans, plan items and the simulator:
+
+- Installments: category, person, start/end dates, current/total installment aliases and notes
+- Payment plans: description
+- Payment plan items: installment, reimbursement and income links, planned payment date, description and notes
+- Decision/status enum values for pay when income arrives, ignore for now, active, completed, cancelled, planned, done and skipped
+
 ## Authentication
 
 The `/login` route supports:
@@ -239,6 +255,9 @@ The first real CRUD set is implemented under authenticated dashboard routes:
 - `/dashboard/invoices`
 - `/dashboard/invoices/[id]`
 - `/dashboard/reimbursements`
+- `/dashboard/installments`
+- `/dashboard/payment-plans`
+- `/dashboard/payment-plans/[id]`
 
 These pages persist data in Supabase and rely on RLS for user isolation. Inserts send the authenticated user's `user_id`, and reads/updates/deletes are still constrained by database policies.
 
@@ -252,6 +271,9 @@ Current tables used by the app:
 - `credit_card_invoices`
 - `credit_card_transactions`
 - `reimbursements`
+- `installments`
+- `payment_plans`
+- `payment_plan_items`
 
 The dashboard now reads:
 
@@ -260,8 +282,52 @@ The dashboard now reads:
 - `credit_card_invoices`
 - `credit_card_transactions`
 - `reimbursements`
+- `installments`
+- `payment_plans`
+- `payment_plan_items`
 
 Reimbursements and third-party money are displayed separately from real income. The projected balance can include them for cash-flow visibility, but the UI warns that they are not free income. Invoice transaction ownership distinguishes personal expenses from third-party, shared and family expenses.
+
+## Payment Plans and Simulator
+
+Payment plans are monthly decision scenarios. A plan can include manual items or linked records from:
+
+- Pending accounts payable
+- Open or overdue credit card invoices
+- Active installments
+- Expected income sources
+- Pending reimbursements
+
+Each item receives a deterministic decision:
+
+- Pagar agora
+- Pagar quando cair renda
+- Pagar no cartão
+- Parcelar
+- Aguardar
+- Negociar
+- Ignorar por enquanto
+
+The simulator calculates:
+
+- Total planned to pay now
+- Total planned when income arrives
+- Total planned by credit card
+- Total to parcel, wait, negotiate or ignore
+- Critical and high risk amounts
+- Real income expected
+- Reimbursements expected
+- Third-party money expected
+- Pending obligations
+- Estimated remaining cash after planned payments
+- Next invoice pressure from pay-by-card decisions plus active installments
+
+Known limitations:
+
+- Calculations are deterministic and rule-based only.
+- There are no AI recommendations.
+- Plan item links are stored directly where the schema supports them, but no automatic status synchronization is implemented yet.
+- Reimbursements and third-party money can help cash flow, but the UI treats them as linked money, not free income.
 
 ## Testing CRUD
 
@@ -274,19 +340,21 @@ npm run dev
 ```
 
 4. Sign up or sign in at `/login`.
-5. Open `/dashboard/people`, `/dashboard/categories`, `/dashboard/accounts`, `/dashboard/income`, `/dashboard/cards`, `/dashboard/invoices`, and `/dashboard/reimbursements`.
+5. Open `/dashboard/people`, `/dashboard/categories`, `/dashboard/accounts`, `/dashboard/income`, `/dashboard/cards`, `/dashboard/invoices`, `/dashboard/reimbursements`, `/dashboard/installments`, and `/dashboard/payment-plans`.
 6. Create, edit, filter and delete records.
 7. Create a card, an invoice, and a linked invoice transaction.
 8. Mark a transaction as third-party, shared or family and create an expected reimbursement.
-9. Confirm the dashboard summary changes after creating accounts, income, invoices, transactions and reimbursements.
+9. Create an installment and confirm the future commitment cards update.
+10. Create a payment plan, open it, add items from pending records or manually, choose decisions and review the simulator totals.
+11. Mark a plan as active and confirm the dashboard shows the active plan summary.
 
 ## Next Planned Step
 
 The next planned step is implementing:
 
-1. Installments
-2. Payment planning
-3. Payment decision scenarios
+1. Exportable import templates
+2. CSV/XLSX upload
+3. Import preview before saving records
 
 ## Development Philosophy
 

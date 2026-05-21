@@ -97,6 +97,46 @@ export const reimbursementStatusOptions: SelectOption[] = [
   { value: "forgiven", label: "Perdoado" },
 ];
 
+export const installmentStatusOptions: SelectOption[] = [
+  { value: "active", label: "Ativo" },
+  { value: "finished", label: "Finalizado" },
+  { value: "cancelled", label: "Cancelado" },
+  { value: "paused", label: "Pausado" },
+];
+
+export const paymentPlanStatusOptions: SelectOption[] = [
+  { value: "draft", label: "Rascunho" },
+  { value: "active", label: "Ativo" },
+  { value: "completed", label: "Concluído" },
+  { value: "cancelled", label: "Cancelado" },
+];
+
+export const paymentPlanItemTypeOptions: SelectOption[] = [
+  { value: "account_payable", label: "Conta" },
+  { value: "credit_card_invoice", label: "Fatura" },
+  { value: "installment", label: "Parcelamento" },
+  { value: "reimbursement", label: "Reembolso" },
+  { value: "income_source", label: "Receita" },
+  { value: "manual", label: "Manual" },
+];
+
+export const paymentDecisionOptions: SelectOption[] = [
+  { value: "pay_now", label: "Pagar agora" },
+  { value: "pay_when_income_arrives", label: "Pagar quando cair renda" },
+  { value: "pay_by_card", label: "Pagar no cartão" },
+  { value: "parcel", label: "Parcelar" },
+  { value: "wait", label: "Aguardar" },
+  { value: "negotiate", label: "Negociar" },
+  { value: "ignore_for_now", label: "Ignorar por enquanto" },
+];
+
+export const planItemStatusOptions: SelectOption[] = [
+  { value: "planned", label: "Planejado" },
+  { value: "done", label: "Feito" },
+  { value: "skipped", label: "Ignorado" },
+  { value: "cancelled", label: "Cancelado" },
+];
+
 export function optionLabel(options: SelectOption[], value: string | null | undefined) {
   return options.find((option) => option.value === value)?.label ?? value ?? "-";
 }

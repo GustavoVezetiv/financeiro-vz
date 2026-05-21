@@ -10,7 +10,16 @@ export type InvoicePaymentStatus =
   | "overdue"
   | "canceled"
   | "cancelled";
-export type PaymentDecision = "pay_now" | "wait" | "parcel" | "negotiate" | "pay_by_card";
+export type PaymentDecision =
+  | "pay_now"
+  | "pay_when_income_arrives"
+  | "wait"
+  | "parcel"
+  | "negotiate"
+  | "pay_by_card"
+  | "ignore_for_now"
+  | "monitor"
+  | "skip";
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
 export type Profile = {
@@ -159,18 +168,26 @@ export type Installment = UserOwnedRow & {
   credit_card_transaction_id: string | null;
   credit_card_id: string | null;
   invoice_id: string | null;
+  category_id: string | null;
+  person_id: string | null;
   description: string;
   total_amount: number;
   installment_amount: number;
   installment_number: number;
   installment_count: number;
+  installment_total: number | null;
+  current_installment: number | null;
   due_month: string;
+  start_date: string | null;
+  end_date: string | null;
   status: string;
+  notes: string | null;
 };
 
 export type PaymentPlan = UserOwnedRow & {
   reference_month: string;
   name: string;
+  description: string | null;
   starting_balance: number;
   projected_income: number;
   projected_reimbursements: number;
@@ -186,15 +203,21 @@ export type PaymentPlanItem = UserOwnedRow & {
   source_id: string | null;
   account_payable_id: string | null;
   credit_card_invoice_id: string | null;
+  installment_id: string | null;
+  reimbursement_id: string | null;
+  income_source_id: string | null;
   planned_purchase_id: string | null;
   goal_id: string | null;
   title: string;
+  description: string | null;
   amount: number;
   due_date: string | null;
   decision: PaymentDecision;
+  planned_payment_date: string | null;
   priority: string;
   risk_level: RiskLevel;
   status: string;
+  notes: string | null;
 };
 
 export type PlannedPurchase = UserOwnedRow & {
