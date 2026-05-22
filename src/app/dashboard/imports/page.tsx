@@ -1,10 +1,9 @@
-import { ModulePlaceholderPage } from "@/components/modules/module-placeholder-page";
+import { ImportsWorkbench } from "@/features/imports/components/imports-workbench";
 
 export const metadata = {
   title: "Importações",
 };
 
 export default function ImportsPage() {
-  return <ModulePlaceholderPage moduleKey="imports" />;
+  return <ImportsWorkbench />;
 }
-

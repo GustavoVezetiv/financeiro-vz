@@ -13,6 +13,7 @@ import type {
   CreditCardTransaction,
   IncomeSource,
   Installment,
+  ImportBatch,
   PaymentPlan,
   PaymentPlanItem,
   Reimbursement,
@@ -37,6 +38,7 @@ export default async function DashboardPage() {
     reimbursementsResult,
     installmentsResult,
     activePlanResult,
+    importsResult,
   ] =
     await Promise.all([
     supabase.from("accounts_payable").select("*"),
@@ -46,6 +48,7 @@ export default async function DashboardPage() {
     supabase.from("reimbursements").select("*"),
     supabase.from("installments").select("*"),
     supabase.from("payment_plans").select("*").eq("status", "active").order("reference_month", { ascending: false }).limit(1),
+    supabase.from("import_batches").select("*").order("created_at", { ascending: false }).limit(1),
   ]);
 
   const activePlan = activePlanResult.data?.[0] ?? null;
@@ -61,6 +64,7 @@ export default async function DashboardPage() {
     reimbursementsResult.error ||
     installmentsResult.error ||
     activePlanResult.error ||
+    importsResult.error ||
     activePlanItemsResult.error
   ) {
     return (
@@ -73,6 +77,7 @@ export default async function DashboardPage() {
           reimbursementsResult.error?.message ??
           installmentsResult.error?.message ??
           activePlanResult.error?.message ??
+          importsResult.error?.message ??
           activePlanItemsResult.error?.message ??
           "Erro ao carregar dados."
         }
@@ -86,6 +91,7 @@ export default async function DashboardPage() {
   const transactions = transactionsResult.data ?? [];
   const reimbursements = reimbursementsResult.data ?? [];
   const installments = installmentsResult.data ?? [];
+  const lastImport = importsResult.data?.[0] ?? null;
   const activePlanItems = activePlanItemsResult.data ?? [];
   const summary = buildDashboardSummary(
     accounts,
@@ -96,6 +102,7 @@ export default async function DashboardPage() {
     installments,
     activePlan,
     activePlanItems,
+    lastImport,
   );
 
   return (
@@ -208,6 +215,17 @@ export default async function DashboardPage() {
             {" "}{formatCurrency(summary.activeInstallmentMonthlyAmount)} por mês.
           </p>
         </SectionCard>
+        <SectionCard title="Última importação" description="Histórico recente de planilhas.">
+          {lastImport ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <StatCard label="Módulo" value={lastImport.target_type ?? lastImport.module} helper={lastImport.file_name} tone="info" />
+              <StatCard label="Linhas importadas" value={String(lastImport.valid_rows)} helper="Válidas ou confirmadas." tone="success" />
+              <StatCard label="Linhas com erro" value={String(lastImport.invalid_rows)} helper="Inválidas ou com falha." tone="danger" />
+            </div>
+          ) : (
+            <EmptyState title="Nenhuma importação" description="Importações salvas aparecerão aqui depois do primeiro CSV ou XLSX." />
+          )}
+        </SectionCard>
       </section>
 
       <SectionCard title="Fluxo dos próximos dias" description="Contas e entradas previstas mais próximas.">
@@ -271,6 +289,7 @@ function buildDashboardSummary(
   installments: Installment[],
   activePlan: PaymentPlan | null,
   activePlanItems: PaymentPlanItem[],
+  lastImport: ImportBatch | null,
 ) {
   const today = todayISO();
   const nextWeek = new Date();
@@ -387,6 +406,7 @@ function buildDashboardSummary(
     activePlanCriticalRisk: activePlanSimulation?.criticalRiskAmount ?? 0,
     activePlanReimbursementDependency: activePlanSimulation?.reimbursementsExpected ?? openReimbursements,
     activeInstallmentMonthlyAmount,
+    lastImport,
     openInvoiceCount: openInvoices.length,
     openReimbursementCount: reimbursements.filter((item) =>
       ["expected", "partial", "late"].includes(item.status),

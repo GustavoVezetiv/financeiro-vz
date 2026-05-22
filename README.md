@@ -74,13 +74,15 @@ Implemented in the foundation phase:
 - CRUD for installments
 - Payment plans and payment plan items
 - Simple deterministic payment decision simulator
+- CSV template downloads for import targets
+- CSV/XLSX import preview, validation, skip and confirmation flow
 - Dashboard summaries using real account, income, invoice, transaction, reimbursement, installment and payment plan data
 
 Not implemented yet:
 
-- Imports
-- Import templates
-- CSV/XLSX import preview
+- Inline editing of preview rows
+- Automatic creation of missing references during import
+- AI-assisted classification
 
 ## Development Setup
 
@@ -216,6 +218,22 @@ Run it after the credit card migration. It adds fields and enum values used by i
 - Payment plan items: installment, reimbursement and income links, planned payment date, description and notes
 - Decision/status enum values for pay when income arrives, ignore for now, active, completed, cancelled, planned, done and skipped
 
+The import preview migration lives at:
+
+```bash
+supabase/migrations/202605210001_extend_import_preview.sql
+```
+
+Run it after the payment plans migration. It adds import metadata and status support:
+
+- `import_batches.target_type`
+- `import_batches.confirmed_at`
+- `import_batches.notes`
+- `import_rows.mapped_data`
+- `import_rows.errors`
+- Additional import statuses for parsed, confirmed, failed and skipped flows
+- Expanded supported import modules
+
 ## Authentication
 
 The `/login` route supports:
@@ -258,6 +276,7 @@ The first real CRUD set is implemented under authenticated dashboard routes:
 - `/dashboard/installments`
 - `/dashboard/payment-plans`
 - `/dashboard/payment-plans/[id]`
+- `/dashboard/imports`
 
 These pages persist data in Supabase and rely on RLS for user isolation. Inserts send the authenticated user's `user_id`, and reads/updates/deletes are still constrained by database policies.
 
@@ -274,6 +293,8 @@ Current tables used by the app:
 - `installments`
 - `payment_plans`
 - `payment_plan_items`
+- `import_batches`
+- `import_rows`
 
 The dashboard now reads:
 
@@ -285,6 +306,7 @@ The dashboard now reads:
 - `installments`
 - `payment_plans`
 - `payment_plan_items`
+- `import_batches`
 
 Reimbursements and third-party money are displayed separately from real income. The projected balance can include them for cash-flow visibility, but the UI warns that they are not free income. Invoice transaction ownership distinguishes personal expenses from third-party, shared and family expenses.
 
@@ -329,6 +351,54 @@ Known limitations:
 - Plan item links are stored directly where the schema supports them, but no automatic status synchronization is implemented yet.
 - Reimbursements and third-party money can help cash flow, but the UI treats them as linked money, not free income.
 
+## Imports
+
+The imports screen is available at `/dashboard/imports`.
+
+Supported import targets:
+
+- People
+- Categories
+- Accounts payable
+- Income sources
+- Credit cards
+- Credit card invoices
+- Credit card transactions
+- Reimbursements
+- Installments
+- Planned purchases
+- Goals
+
+How to use:
+
+1. Open `/dashboard/imports`.
+2. Download a CSV template from "Modelos de planilha".
+3. Fill the spreadsheet using the Portuguese headers.
+4. Choose the target module.
+5. Upload a `.csv` or `.xlsx` file.
+6. Click "Prévia".
+7. Review mapped values and validation errors.
+8. Mark rows as ignored if they should not be imported.
+9. Save the preview.
+10. Confirm the import.
+
+Validation rules:
+
+- Required fields must be present.
+- Amounts must be numeric and greater than or equal to zero.
+- Dates must be valid.
+- Enum-like values are normalized when possible.
+- Categories, people, cards and invoices referenced by name must already exist.
+- Duplicates are blocked by practical matching rules per module.
+
+Known limitations:
+
+- Preview rows can be skipped but not edited inline yet.
+- Missing references are not auto-created.
+- Import confirmation uses partial success: valid rows can import while failed rows are marked with errors.
+- XLSX/CSV parsing runs in the browser using `xlsx`.
+- No Open Finance, OCR, PDF parsing, card scraping or AI classification is implemented.
+
 ## Testing CRUD
 
 1. Configure `.env.local` with Supabase URL and anon key.
@@ -340,21 +410,22 @@ npm run dev
 ```
 
 4. Sign up or sign in at `/login`.
-5. Open `/dashboard/people`, `/dashboard/categories`, `/dashboard/accounts`, `/dashboard/income`, `/dashboard/cards`, `/dashboard/invoices`, `/dashboard/reimbursements`, `/dashboard/installments`, and `/dashboard/payment-plans`.
+5. Open `/dashboard/people`, `/dashboard/categories`, `/dashboard/accounts`, `/dashboard/income`, `/dashboard/cards`, `/dashboard/invoices`, `/dashboard/reimbursements`, `/dashboard/installments`, `/dashboard/payment-plans`, and `/dashboard/imports`.
 6. Create, edit, filter and delete records.
 7. Create a card, an invoice, and a linked invoice transaction.
 8. Mark a transaction as third-party, shared or family and create an expected reimbursement.
 9. Create an installment and confirm the future commitment cards update.
 10. Create a payment plan, open it, add items from pending records or manually, choose decisions and review the simulator totals.
 11. Mark a plan as active and confirm the dashboard shows the active plan summary.
+12. Download an import template, upload a CSV/XLSX file, save the preview and confirm valid rows.
 
 ## Next Planned Step
 
 The next planned step is implementing:
 
-1. Exportable import templates
-2. CSV/XLSX upload
-3. Import preview before saving records
+1. UX polish
+2. Performance pass
+3. Deployment preparation
 
 ## Development Philosophy
 

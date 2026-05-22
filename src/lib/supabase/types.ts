@@ -254,6 +254,7 @@ export type Note = UserOwnedRow & {
 
 export type ImportBatch = UserOwnedRow & {
   module: string;
+  target_type: string | null;
   file_name: string;
   file_type: "csv" | "xlsx";
   status: string;
@@ -262,6 +263,8 @@ export type ImportBatch = UserOwnedRow & {
   invalid_rows: number;
   mapping_config: Json | null;
   imported_at: string | null;
+  confirmed_at: string | null;
+  notes: string | null;
 };
 
 export type ImportRow = UserOwnedRow & {
@@ -269,7 +272,9 @@ export type ImportRow = UserOwnedRow & {
   row_number: number;
   raw_data: Json;
   parsed_data: Json | null;
+  mapped_data: Json | null;
   validation_errors: Json | null;
+  errors: Json | null;
   status: string;
   target_entity_type: string | null;
   target_entity_id: string | null;
