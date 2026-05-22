@@ -113,20 +113,38 @@ export function InstallmentsCrud() {
       setFeedback({ type: "error", message: "Valores e parcelas precisam ser válidos." });
       return;
     }
-    if (!userId) return;
+    if (!userId) {
+      setFeedback({ type: "error", message: "Sessão não encontrada. Entre novamente para salvar." });
+      return;
+    }
     setSaving(true);
-    const client = createClient();
-    const result =
-      modal?.mode === "edit"
-        ? await updateInstallment(client, modal.installment.id, values)
-        : await createInstallment(client, userId, values);
-    if (result.error) setFeedback({ type: "error", message: result.error.message });
-    else {
+    try {
+      const client = createClient();
+      const result =
+        modal?.mode === "edit"
+          ? await updateInstallment(client, modal.installment.id, values)
+          : await createInstallment(client, userId, values);
+      if (result.error) {
+        console.error("Erro ao salvar parcelamento:", result.error);
+        setFeedback({
+          type: "error",
+          message: "Não foi possível salvar o parcelamento. Verifique os dados e tente novamente.",
+        });
+        return;
+      }
+
       setFeedback({ type: "success", message: modal?.mode === "edit" ? "Parcelamento atualizado." : "Parcelamento criado." });
       setModal(null);
       await loadData();
+    } catch (error) {
+      console.error("Erro inesperado ao salvar parcelamento:", error);
+      setFeedback({
+        type: "error",
+        message: "Ocorreu um erro inesperado ao salvar o parcelamento. Tente novamente.",
+      });
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function handleDelete(item: InstallmentRow) {

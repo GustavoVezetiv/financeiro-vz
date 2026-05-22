@@ -1,5 +1,6 @@
 import type { AppSupabaseClient } from "@/features/shared/types";
 import type { InstallmentFormValues, InstallmentRow } from "@/features/installments/types";
+import { createSafeUuid } from "@/lib/uuid";
 
 export async function listInstallments(client: AppSupabaseClient) {
   return client.from("installments").select("*").order("due_month", { ascending: true });
@@ -17,7 +18,15 @@ export async function listInstallmentSupportData(client: AppSupabaseClient) {
 }
 
 export async function createInstallment(client: AppSupabaseClient, userId: string, values: InstallmentFormValues) {
-  return client.from("installments").insert(toPayload(userId, values)).select("*").single();
+  return client
+    .from("installments")
+    .insert({
+      ...toPayload(userId, values),
+      // Kept for compatibility with databases that have not run the default UUID migration yet.
+      installment_group_id: createSafeUuid(),
+    })
+    .select("*")
+    .single();
 }
 
 export async function updateInstallment(client: AppSupabaseClient, id: string, values: InstallmentFormValues) {
@@ -34,7 +43,7 @@ function toPayload(userId: string | undefined, values: InstallmentFormValues): P
   const startDate = values.start_date || values.end_date;
 
   return {
-    ...(userId ? { user_id: userId, installment_group_id: crypto.randomUUID() } : {}),
+    ...(userId ? { user_id: userId } : {}),
     description: values.description.trim(),
     total_amount: Number(values.total_amount || 0),
     installment_amount: Number(values.installment_amount || 0),
