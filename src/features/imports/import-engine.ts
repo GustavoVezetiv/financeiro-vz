@@ -1,3 +1,4 @@
+import { isActiveImportTarget } from "@/features/imports/templates";
 import type { ImportTarget, PreviewRow, RawImportRow, ReferenceData } from "@/features/imports/types";
 import type { Json } from "@/lib/supabase/types";
 
@@ -13,6 +14,16 @@ const installmentStatuses = ["active", "finished", "cancelled", "paused"];
 const riskLevels = ["low", "medium", "high", "critical"];
 
 export function buildPreviewRows(target: ImportTarget, rawRows: RawImportRow[], references: ReferenceData) {
+  if (!isActiveImportTarget(target)) {
+    return rawRows.map((raw, index) => ({
+      rowNumber: index + 2,
+      raw,
+      mapped: {},
+      status: "invalid" as const,
+      errors: ["Importação deste módulo está em breve."],
+    }));
+  }
+
   const seen = new Set<string>();
   return rawRows.map((raw, index) => validateRow(target, raw, index + 2, references, seen));
 }
@@ -24,10 +35,15 @@ export function rowCounts(rows: PreviewRow[]) {
     invalid: rows.filter((row) => row.status === "invalid").length,
     skipped: rows.filter((row) => row.status === "skipped").length,
     imported: rows.filter((row) => row.status === "imported").length,
+    failed: rows.filter((row) => row.status === "failed").length,
   };
 }
 
 export function buildInsertPayload(target: ImportTarget, userId: string, mapped: Mapped) {
+  if (!isActiveImportTarget(target)) {
+    throw new Error("Importação deste módulo ainda não está disponível.");
+  }
+
   if (target === "people") {
     return {
       user_id: userId,
@@ -58,7 +74,7 @@ export function buildInsertPayload(target: ImportTarget, userId: string, mapped:
       due_date: mapped.due_date,
       category_id: mapped.category_id ?? null,
       person_id: mapped.person_id ?? null,
-      priority: mapped.priority ?? "medium",
+      priority: mapped.priority ?? "normal",
       risk_level: mapped.risk_level ?? "medium",
       status: mapped.status ?? "pending",
       payment_method_planned: mapped.payment_method_planned ?? "unknown",
@@ -243,7 +259,7 @@ function mapRow(target: ImportTarget, raw: RawImportRow, references: ReferenceDa
       due_date: dueDate,
       category_id: categoryId,
       person_id: personId,
-      priority: normalizeEnum(raw.prioridade, ["low", "medium", "high", "critical", "normal"], "medium"),
+      priority: normalizeEnum(raw.prioridade, ["low", "normal", "high", "critical"], "normal"),
       status: normalizeEnum(raw.status, accountStatuses, "pending"),
       payment_method_planned: normalizeEnum(raw.forma_pagamento_planejada, ["cash", "pix", "credit_card", "bank_slip", "debit", "transfer", "negotiation", "unknown"], "unknown"),
       can_delay: bool(raw.pode_atrasar, false),

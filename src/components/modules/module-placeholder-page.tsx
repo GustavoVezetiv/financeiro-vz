@@ -9,8 +9,8 @@ type ModulePlaceholderPageProps = {
 };
 
 const placeholderRows = [
-  ["--", "Dados mockados", "R$ 0,00", "Pendente", "Placeholder"],
-  ["--", "Aguardando Supabase", "R$ 0,00", "Normal", "Futuro"],
+  ["--", "Em breve", "R$ 0,00", "Indisponível", "Beta privado"],
+  ["--", "Módulo ainda não liberado", "R$ 0,00", "Planejado", "Futuro"],
 ];
 
 export function ModulePlaceholderPage({ moduleKey }: ModulePlaceholderPageProps) {
@@ -27,12 +27,11 @@ export function ModulePlaceholderPage({ moduleKey }: ModulePlaceholderPageProps)
       <EmptyState
         title={moduleConfig.emptyTitle}
         description={moduleConfig.emptyDescription}
-        actionLabel="Ação futura"
       />
 
       <SectionCard
-        title="Estrutura visual"
-        description="Tabela temporária para validar espaçamento, hierarquia e navegação antes do CRUD."
+        title="Em breve"
+        description="Este módulo está visível para navegação, mas ainda não deve ser usado como funcionalidade pronta no beta."
       >
         <DataTablePlaceholder
           title={`Prévia de ${moduleConfig.title.toLowerCase()}`}

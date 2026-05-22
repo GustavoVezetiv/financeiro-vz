@@ -1,6 +1,6 @@
 import type { ImportTarget, ImportTargetConfig } from "@/features/imports/types";
 
-export const importTargets: ImportTargetConfig[] = [
+export const activeImportTargets: ImportTargetConfig[] = [
   {
     target: "people",
     label: "Pessoas",
@@ -50,6 +50,9 @@ export const importTargets: ImportTargetConfig[] = [
       "observacoes",
     ],
   },
+];
+
+export const futureImportTargets: ImportTargetConfig[] = [
   {
     target: "credit_cards",
     label: "Cartões",
@@ -106,6 +109,12 @@ export const importTargets: ImportTargetConfig[] = [
     headers: ["nome", "tipo", "valor_alvo", "valor_atual", "data_alvo", "contribuicao_mensal", "status"],
   },
 ];
+
+export const importTargets: ImportTargetConfig[] = [...activeImportTargets, ...futureImportTargets];
+
+export function isActiveImportTarget(target: ImportTarget) {
+  return activeImportTargets.some((item) => item.target === target);
+}
 
 export function getImportTargetConfig(target: ImportTarget) {
   return importTargets.find((item) => item.target === target) ?? importTargets[0];

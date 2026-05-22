@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { getAuthRedirectUrl } from "@/lib/supabase/config";
 
 type AuthFormProps = {
   isConfigured: boolean;
@@ -54,6 +55,9 @@ export function AuthForm({ isConfigured }: AuthFormProps) {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl("/login"),
+        },
       });
 
       if (signUpError) {
@@ -154,4 +158,3 @@ export function AuthForm({ isConfigured }: AuthFormProps) {
     </form>
   );
 }
-

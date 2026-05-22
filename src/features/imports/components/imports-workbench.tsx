@@ -14,7 +14,12 @@ import {
   loadImportReferenceData,
   saveImportPreview,
 } from "@/features/imports/queries";
-import { downloadTemplate, getImportTargetConfig, importTargets } from "@/features/imports/templates";
+import {
+  activeImportTargets,
+  downloadTemplate,
+  futureImportTargets,
+  getImportTargetConfig,
+} from "@/features/imports/templates";
 import type { ImportTarget, PreviewRow } from "@/features/imports/types";
 import { ActionButton, CrudFeedback, inputClassName, TextBadge } from "@/features/shared/crud-ui";
 import { formatDate } from "@/features/shared/format";
@@ -30,11 +35,12 @@ export function ImportsWorkbench() {
   const [batchId, setBatchId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState(false);
+  const [workingAction, setWorkingAction] = useState<"parse" | "save" | "confirm" | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
   const counts = useMemo(() => rowCounts(rows), [rows]);
   const config = getImportTargetConfig(target);
+  const working = workingAction !== null;
 
   async function loadHistory() {
     const client = createClient();
@@ -60,32 +66,52 @@ export function ImportsWorkbench() {
       setFeedback({ type: "error", message: "Selecione um arquivo CSV ou XLSX." });
       return;
     }
-    setWorking(true);
+    setWorkingAction("parse");
     setFeedback(null);
-    const client = createClient();
-    const [rawRows, references] = await Promise.all([
-      parseSpreadsheetFile(file),
-      loadImportReferenceData(client),
-    ]);
-    const preview = buildPreviewRows(target, rawRows, references);
-    setRows(preview);
-    setBatchId(null);
-    setFeedback({ type: "success", message: `${preview.length} linhas lidas. Revise a prévia antes de confirmar.` });
-    setWorking(false);
+    try {
+      const client = createClient();
+      const [rawRows, references] = await Promise.all([
+        parseSpreadsheetFile(file),
+        loadImportReferenceData(client),
+      ]);
+      const preview = buildPreviewRows(target, rawRows, references);
+      setRows(preview);
+      setBatchId(null);
+      setFeedback({ type: "success", message: `${preview.length} linhas lidas. Revise a prévia antes de confirmar.` });
+    } catch (error) {
+      console.error("Erro técnico ao processar arquivo de importação:", error);
+      setFeedback({
+        type: "error",
+        message: "Não foi possível ler o arquivo. Verifique se ele é um CSV ou XLSX válido.",
+      });
+    } finally {
+      setWorkingAction(null);
+    }
   }
 
   async function handleSavePreview() {
     if (!userId || !file || rows.length === 0) return;
-    setWorking(true);
-    const result = await saveImportPreview(createClient(), userId, target, file, rows);
-    if (result.batch.error || result.rows?.error) {
-      setFeedback({ type: "error", message: result.batch.error?.message ?? result.rows?.error?.message ?? "Erro ao salvar prévia." });
-    } else {
-      setBatchId(result.batch.data?.id ?? null);
-      setFeedback({ type: "success", message: "Prévia salva. Agora você pode confirmar a importação." });
-      await loadHistory();
+    setWorkingAction("save");
+    setFeedback(null);
+    try {
+      const result = await saveImportPreview(createClient(), userId, target, file, rows);
+      if (result.batch.error || result.rows?.error) {
+        console.error("Erro técnico ao salvar prévia de importação:", result.batch.error ?? result.rows?.error);
+        setFeedback({
+          type: "error",
+          message: "Não foi possível salvar a prévia da importação. Revise os dados e tente novamente.",
+        });
+      } else {
+        setBatchId(result.batch.data?.id ?? null);
+        setFeedback({ type: "success", message: "Prévia salva. Agora você pode confirmar a importação." });
+        await loadHistory();
+      }
+    } catch (error) {
+      console.error("Erro técnico ao salvar prévia de importação:", error);
+      setFeedback({ type: "error", message: "Não foi possível salvar a prévia da importação." });
+    } finally {
+      setWorkingAction(null);
     }
-    setWorking(false);
   }
 
   async function handleConfirm() {
@@ -93,12 +119,19 @@ export function ImportsWorkbench() {
       setFeedback({ type: "error", message: "Salve a prévia antes de confirmar." });
       return;
     }
-    setWorking(true);
-    const updatedRows = await confirmImportRows(createClient(), userId, batchId, target, rows);
-    setRows(updatedRows);
-    setFeedback({ type: "success", message: "Importação confirmada. Linhas inválidas ou ignoradas não foram inseridas." });
-    await loadHistory();
-    setWorking(false);
+    setWorkingAction("confirm");
+    setFeedback(null);
+    try {
+      const updatedRows = await confirmImportRows(createClient(), userId, batchId, target, rows);
+      setRows(updatedRows);
+      setFeedback({ type: "success", message: "Importação confirmada. Linhas inválidas ou ignoradas não foram inseridas." });
+      await loadHistory();
+    } catch (error) {
+      console.error("Erro técnico ao confirmar importação:", error);
+      setFeedback({ type: "error", message: "Não foi possível confirmar a importação. Tente novamente." });
+    } finally {
+      setWorkingAction(null);
+    }
   }
 
   function toggleSkip(rowNumber: number) {
@@ -122,17 +155,27 @@ export function ImportsWorkbench() {
       />
       <CrudFeedback feedback={feedback} />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <StatCard label="Total" value={String(counts.total)} helper="Linhas na prévia." tone="info" />
         <StatCard label="Válidas" value={String(counts.valid)} helper="Prontas para confirmar." tone="success" />
         <StatCard label="Inválidas" value={String(counts.invalid)} helper="Com erros de validação." tone="danger" />
         <StatCard label="Ignoradas" value={String(counts.skipped)} helper="Não serão importadas." tone="warning" />
         <StatCard label="Importadas" value={String(counts.imported)} helper="Já gravadas no módulo final." tone="success" />
+        <StatCard label="Falhas" value={String(counts.failed)} helper="Erro ao gravar." tone="danger" />
       </section>
 
+      <SectionCard title="Como usar" description="Fluxo simples e seguro para o MVP.">
+        <ul className="space-y-2 text-sm leading-6 text-ink-600">
+          <li>Baixe o modelo, preencha os campos e importe o arquivo.</li>
+          <li>Categorias e pessoas referenciadas precisam existir antes da importação.</li>
+          <li>Linhas inválidas não serão importadas.</li>
+          <li>Você poderá revisar a prévia antes de confirmar.</li>
+        </ul>
+      </SectionCard>
+
       <SectionCard title="Modelos de planilha" description="CSV com cabeçalhos estáveis em português.">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {importTargets.map((item) => (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {activeImportTargets.map((item) => (
             <button
               key={item.target}
               type="button"
@@ -143,6 +186,23 @@ export function ImportsWorkbench() {
               <span className="mt-1 block text-sm leading-6 text-ink-600">{item.description}</span>
             </button>
           ))}
+        </div>
+        <div className="mt-5 border-t border-ink-950/10 pt-5">
+          <p className="text-sm font-semibold text-ink-950">Em breve</p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {futureImportTargets.map((item) => (
+              <div
+                key={item.target}
+                className="rounded-md border border-dashed border-ink-950/10 bg-slate-50 p-4 text-left"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="block text-sm font-semibold text-ink-950">{item.label}</span>
+                  <TextBadge tone="neutral">Em breve</TextBadge>
+                </div>
+                <span className="mt-1 block text-sm leading-6 text-ink-600">{item.description}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </SectionCard>
 
@@ -159,7 +219,7 @@ export function ImportsWorkbench() {
                 setBatchId(null);
               }}
             >
-              {importTargets.map((item) => (
+              {activeImportTargets.map((item) => (
                 <option key={item.target} value={item.target}>{item.label}</option>
               ))}
             </select>
@@ -178,13 +238,13 @@ export function ImportsWorkbench() {
               Modelo
             </ActionButton>
             <ActionButton type="button" onClick={() => void handleParse()} disabled={working}>
-              {working ? "Processando..." : "Prévia"}
+              {workingAction === "parse" ? "Processando..." : "Prévia"}
             </ActionButton>
           </div>
         </div>
         <p className="mt-4 text-sm leading-6 text-ink-600">
-          Alvo selecionado: <strong>{config.label}</strong>. Referências como categoria, pessoa,
-          cartão e fatura precisam existir antes da importação.
+          Alvo selecionado: <strong>{config.label}</strong>. Neste MVP, categorias e pessoas
+          informadas na planilha precisam existir antes da importação.
         </p>
       </SectionCard>
 
@@ -195,10 +255,10 @@ export function ImportsWorkbench() {
           <div className="space-y-4">
             <div className="flex flex-wrap justify-end gap-2">
               <ActionButton type="button" variant="secondary" onClick={() => void handleSavePreview()} disabled={working || !file}>
-                Salvar prévia
+                {workingAction === "save" ? "Salvando..." : "Salvar prévia"}
               </ActionButton>
               <ActionButton type="button" onClick={() => void handleConfirm()} disabled={working || !batchId}>
-                Confirmar importação
+                {workingAction === "confirm" ? "Importando..." : "Confirmar importação"}
               </ActionButton>
             </div>
             <div className="overflow-x-auto">
@@ -207,9 +267,10 @@ export function ImportsWorkbench() {
                   <tr>
                     <th className="px-4 py-3">Linha</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Mapeado</th>
                     <th className="px-4 py-3">Erros</th>
-                    <th className="px-4 py-3 text-right">Importar</th>
+                    <th className="px-4 py-3">Dados originais</th>
+                    <th className="px-4 py-3">Dados mapeados</th>
+                    <th className="px-4 py-3 text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ink-950/10">
@@ -217,13 +278,18 @@ export function ImportsWorkbench() {
                     <tr key={row.rowNumber}>
                       <td className="px-4 py-3 text-ink-600">{row.rowNumber}</td>
                       <td className="px-4 py-3"><StatusPill status={row.status} /></td>
+                      <td className="px-4 py-3 text-danger-600">
+                        {row.errors.length ? row.errors.join(" | ") : "-"}
+                      </td>
+                      <td className="max-w-md px-4 py-3 text-ink-600">
+                        <pre className="max-h-28 overflow-auto rounded-md bg-slate-50 p-3 text-xs">
+                          {JSON.stringify(row.raw, null, 2)}
+                        </pre>
+                      </td>
                       <td className="max-w-md px-4 py-3 text-ink-600">
                         <pre className="max-h-28 overflow-auto rounded-md bg-slate-50 p-3 text-xs">
                           {JSON.stringify(row.mapped, null, 2)}
                         </pre>
-                      </td>
-                      <td className="px-4 py-3 text-danger-600">
-                        {row.errors.length ? row.errors.join(" | ") : "-"}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <ActionButton

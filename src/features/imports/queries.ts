@@ -1,4 +1,5 @@
 import { buildInsertPayload } from "@/features/imports/import-engine";
+import { isActiveImportTarget } from "@/features/imports/templates";
 import type { ImportTarget, PreviewRow, ReferenceData } from "@/features/imports/types";
 import type { AppSupabaseClient } from "@/features/shared/types";
 import type { ImportBatch, ImportRow } from "@/lib/supabase/types";
@@ -8,31 +9,18 @@ export async function listImportBatches(client: AppSupabaseClient) {
 }
 
 export async function loadImportReferenceData(client: AppSupabaseClient): Promise<ReferenceData> {
-  const [
-    people,
-    categories,
-    cards,
-    invoices,
-    accounts,
-    incomeSources,
-    transactions,
-    reimbursements,
-  ] = await Promise.all([
+  const [people, categories, accounts, incomeSources] = await Promise.all([
     client.from("people").select("id,name").order("name"),
     client.from("categories").select("id,name,type").order("name"),
-    client.from("credit_cards").select("id,name,issuer").order("name"),
-    client.from("credit_card_invoices").select("id,credit_card_id,reference_month,due_date"),
     client.from("accounts_payable").select("id,title,amount,due_date"),
     client.from("income_sources").select("id,name,amount,expected_date"),
-    client.from("credit_card_transactions").select("invoice_id,transaction_date,description,amount"),
-    client.from("reimbursements").select("person_id,description,expected_amount,expected_date"),
   ]);
 
   return {
     people: people.data ?? [],
     categories: categories.data ?? [],
-    cards: cards.data ?? [],
-    invoices: invoices.data ?? [],
+    cards: [],
+    invoices: [],
     accounts: accounts.data ?? [],
     incomeSources: incomeSources.data ?? [],
     existing: {
@@ -40,10 +28,10 @@ export async function loadImportReferenceData(client: AppSupabaseClient): Promis
       categories: categories.data ?? [],
       accounts_payable: accounts.data ?? [],
       income_sources: incomeSources.data ?? [],
-      credit_cards: cards.data ?? [],
-      credit_card_invoices: invoices.data ?? [],
-      credit_card_transactions: transactions.data ?? [],
-      reimbursements: reimbursements.data ?? [],
+      credit_cards: [],
+      credit_card_invoices: [],
+      credit_card_transactions: [],
+      reimbursements: [],
     },
   };
 }
@@ -55,6 +43,10 @@ export async function saveImportPreview(
   file: File,
   rows: PreviewRow[],
 ) {
+  if (!isActiveImportTarget(target)) {
+    throw new Error("Importação deste módulo ainda não está disponível.");
+  }
+
   const validRows = rows.filter((row) => row.status === "valid").length;
   const invalidRows = rows.filter((row) => row.status === "invalid").length;
   const fileType = file.name.toLowerCase().endsWith(".xlsx") ? "xlsx" : "csv";
@@ -103,6 +95,10 @@ export async function confirmImportRows(
   target: ImportTarget,
   rows: PreviewRow[],
 ) {
+  if (!isActiveImportTarget(target)) {
+    throw new Error("Importação deste módulo ainda não está disponível.");
+  }
+
   const results: PreviewRow[] = [];
 
   for (const row of rows) {
@@ -111,11 +107,38 @@ export async function confirmImportRows(
       continue;
     }
 
-    const payload = buildInsertPayload(target, userId, row.mapped);
-    const insertResult = await insertTargetRow(client, target, payload);
+    try {
+      const payload = buildInsertPayload(target, userId, row.mapped);
+      const insertResult = await insertTargetRow(client, target, payload);
 
-    if (insertResult.error) {
-      const failed = { ...row, status: "failed" as const, errors: [insertResult.error.message] };
+      if (insertResult.error) {
+        const failed = { ...row, status: "failed" as const, errors: [insertResult.error.message] };
+        results.push(failed);
+        await client
+          .from("import_rows")
+          .update({
+            status: "failed",
+            errors: failed.errors,
+            validation_errors: failed.errors,
+          })
+          .eq("import_batch_id", batchId)
+          .eq("row_number", row.rowNumber);
+        continue;
+      }
+
+      const imported = { ...row, status: "imported" as const, errors: [] };
+      results.push(imported);
+      await client
+        .from("import_rows")
+        .update({
+          status: "imported",
+          target_entity_id: insertResult.data?.id ?? null,
+        })
+        .eq("import_batch_id", batchId)
+        .eq("row_number", row.rowNumber);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro inesperado ao importar a linha.";
+      const failed = { ...row, status: "failed" as const, errors: [message] };
       results.push(failed);
       await client
         .from("import_rows")
@@ -126,19 +149,7 @@ export async function confirmImportRows(
         })
         .eq("import_batch_id", batchId)
         .eq("row_number", row.rowNumber);
-      continue;
     }
-
-    const imported = { ...row, status: "imported" as const, errors: [] };
-    results.push(imported);
-    await client
-      .from("import_rows")
-      .update({
-        status: "imported",
-        target_entity_id: insertResult.data?.id ?? null,
-      })
-      .eq("import_batch_id", batchId)
-      .eq("row_number", row.rowNumber);
   }
 
   const importedCount = results.filter((row) => row.status === "imported").length;
@@ -159,5 +170,13 @@ export async function confirmImportRows(
 }
 
 async function insertTargetRow(client: AppSupabaseClient, target: ImportTarget, payload: Record<string, unknown>) {
-  return client.from(target).insert(payload).select("id").single();
+  if (target === "people") return client.from("people").insert(payload).select("id").single();
+  if (target === "categories") return client.from("categories").insert(payload).select("id").single();
+  if (target === "accounts_payable") {
+    return client.from("accounts_payable").insert(payload).select("id").single();
+  }
+  if (target === "income_sources") {
+    return client.from("income_sources").insert(payload).select("id").single();
+  }
+  throw new Error("Importação deste módulo ainda não está disponível.");
 }

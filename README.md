@@ -74,8 +74,8 @@ Implemented in the foundation phase:
 - CRUD for installments
 - Payment plans and payment plan items
 - Simple deterministic payment decision simulator
-- CSV template downloads for import targets
-- CSV/XLSX import preview, validation, skip and confirmation flow
+- CSV template downloads for the MVP import targets
+- CSV/XLSX import preview, validation, skip and confirmation flow for people, categories, accounts payable and income sources
 - Dashboard summaries using real account, income, invoice, transaction, reimbursement, installment and payment plan data
 
 Not implemented yet:
@@ -134,9 +134,13 @@ Required variables:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SITE_URL=
 ```
 
 Do not commit `.env.local`.
+
+`NEXT_PUBLIC_SITE_URL` should be the public app URL used by Supabase redirects. Use
+`http://localhost:3000` locally and the final Vercel URL in production.
 
 ## Database Schema
 
@@ -232,7 +236,7 @@ Run it after the payment plans migration. It adds import metadata and status sup
 - `import_rows.mapped_data`
 - `import_rows.errors`
 - Additional import statuses for parsed, confirmed, failed and skipped flows
-- Expanded supported import modules
+- Import preview metadata for the stabilized MVP import flow
 
 ## Authentication
 
@@ -355,12 +359,15 @@ Known limitations:
 
 The imports screen is available at `/dashboard/imports`.
 
-Supported import targets:
+Currently supported import targets:
 
 - People
 - Categories
 - Accounts payable
 - Income sources
+
+Future import targets are visible as "Em breve" and cannot be imported yet:
+
 - Credit cards
 - Credit card invoices
 - Credit card transactions
@@ -377,7 +384,7 @@ How to use:
 4. Choose the target module.
 5. Upload a `.csv` or `.xlsx` file.
 6. Click "Prévia".
-7. Review mapped values and validation errors.
+7. Review original values, mapped values and validation errors.
 8. Mark rows as ignored if they should not be imported.
 9. Save the preview.
 10. Confirm the import.
@@ -388,7 +395,7 @@ Validation rules:
 - Amounts must be numeric and greater than or equal to zero.
 - Dates must be valid.
 - Enum-like values are normalized when possible.
-- Categories, people, cards and invoices referenced by name must already exist.
+- For accounts payable and income sources, categories and people are optional, but when provided they must already exist.
 - Duplicates are blocked by practical matching rules per module.
 
 Known limitations:
@@ -397,7 +404,60 @@ Known limitations:
 - Missing references are not auto-created.
 - Import confirmation uses partial success: valid rows can import while failed rows are marked with errors.
 - XLSX/CSV parsing runs in the browser using `xlsx`.
+- Credit card, invoice, transaction, reimbursement, installment, planned purchase and goal imports are intentionally disabled until their templates are stabilized.
 - No Open Finance, OCR, PDF parsing, card scraping or AI classification is implemented.
+
+## Deployment
+
+Financeiro VZ is ready for a private beta deployment on Vercel after the Supabase project and migrations are configured.
+
+Local development:
+
+```bash
+npm install
+npm run dev
+```
+
+Supabase setup:
+
+1. Create a Supabase project.
+2. Copy the Project URL and anon public key from Project Settings > API.
+3. Run the SQL files in `supabase/migrations` in order.
+4. Enable the authentication providers needed for the beta. Email/password is the current supported flow.
+5. Configure Auth URLs:
+   - Site URL: the deployed Vercel URL, for example `https://financeiro-vz.vercel.app`
+   - Redirect URLs: the deployed URL and `/login`, for example `https://financeiro-vz.vercel.app/login`
+   - Local Redirect URL for development: `http://localhost:3000/login`
+
+Vercel setup:
+
+1. Import the GitHub repository into Vercel.
+2. Keep the default Next.js build command: `npm run build`.
+3. Set the environment variables below in Vercel Project Settings.
+4. Deploy.
+5. After deploy, update Supabase Site URL and Redirect URLs with the final Vercel domain.
+
+Required environment variables:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SITE_URL=
+```
+
+Do not add a Supabase service role key to Vercel or frontend code. The app uses the anon key plus Row Level Security.
+
+Post deploy checklist:
+
+1. Sign up.
+2. Log in.
+3. Access `/dashboard`.
+4. Create a category.
+5. Create a person.
+6. Create an account payable.
+7. Create an income source.
+8. Log out.
+9. Log in again and reload an authenticated dashboard page.
 
 ## Testing CRUD
 
@@ -453,3 +513,4 @@ Initial project documentation:
 - [Database Model](docs/DATABASE_MODEL.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Architecture Decisions](docs/DECISIONS.md)
+- [Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md)
