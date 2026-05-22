@@ -5,7 +5,7 @@ node_modules
 .next
 out
 
-# production
+# production build
 build
 
 # local env files
@@ -21,4 +21,3 @@ pnpm-debug.log*
 # system
 .DS_Store
 Thumbs.db
-
