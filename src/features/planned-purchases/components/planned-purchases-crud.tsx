@@ -1,0 +1,232 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { SectionCard } from "@/components/ui/section-card";
+import { StatCard } from "@/components/ui/stat-card";
+import { createPlannedPurchase, deletePlannedPurchase, listPlannedPurchases, listPlannedPurchaseSupportData, updatePlannedPurchase } from "@/features/planned-purchases/queries";
+import { decisionStatusOptions, emptyPlannedPurchaseForm, plannedPurchaseToFormValues, type PlannedPurchaseFormValues, type PlannedPurchaseRow, type PlannedPurchaseSupportData } from "@/features/planned-purchases/types";
+import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
+import { formatCurrency, formatDate } from "@/features/shared/format";
+import { optionLabel, paymentMethodOptions, priorityOptions } from "@/features/shared/options";
+import type { FeedbackState } from "@/features/shared/types";
+import { createClient } from "@/lib/supabase/client";
+
+type ModalState = { mode: "create"; item: null } | { mode: "edit"; item: PlannedPurchaseRow } | null;
+
+export function PlannedPurchasesCrud() {
+  const [items, setItems] = useState<PlannedPurchaseRow[]>([]);
+  const [support, setSupport] = useState<PlannedPurchaseSupportData>({ categories: [] });
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [riskFilter, setRiskFilter] = useState("all");
+  const [modal, setModal] = useState<ModalState>(null);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    const client = createClient();
+    const { data: auth, error: authError } = await client.auth.getUser();
+    if (authError || !auth.user) {
+      setFeedback({ type: "error", message: "Sessão não encontrada. Entre novamente." });
+      setLoading(false);
+      return;
+    }
+    setUserId(auth.user.id);
+
+    const [purchaseResult, supportResult] = await Promise.all([
+      listPlannedPurchases(client),
+      listPlannedPurchaseSupportData(client),
+    ]);
+
+    if (purchaseResult.error) setFeedback({ type: "error", message: purchaseResult.error.message });
+    else setItems(purchaseResult.data ?? []);
+
+    if (supportResult.categories.error) setFeedback({ type: "error", message: supportResult.categories.error.message });
+    else setSupport({ categories: supportResult.categories.data ?? [] });
+
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return items.filter((item) => {
+      const matchesSearch = !term || [item.title, item.description, item.notes].some((value) => value?.toLowerCase().includes(term));
+      const matchesStatus = statusFilter === "all" || item.decision_status === statusFilter;
+      const matchesRisk = riskFilter === "all" || item.risk_level === riskFilter;
+      return matchesSearch && matchesStatus && matchesRisk;
+    });
+  }, [items, riskFilter, search, statusFilter]);
+
+  const summary = useMemo(() => {
+    const active = items.filter((item) => !["purchased", "canceled"].includes(item.decision_status));
+    const highRisk = active.filter((item) => ["high", "critical"].includes(item.risk_level));
+    const approved = active.filter((item) => item.decision_status === "approved");
+    return {
+      totalActive: active.reduce((sum, item) => sum + Number(item.estimated_amount), 0),
+      highRiskTotal: highRisk.reduce((sum, item) => sum + Number(item.estimated_amount), 0),
+      approvedTotal: approved.reduce((sum, item) => sum + Number(item.estimated_amount), 0),
+      count: active.length,
+    };
+  }, [items]);
+
+  async function handleSubmit(values: PlannedPurchaseFormValues) {
+    if (!values.title.trim()) {
+      setFeedback({ type: "error", message: "Informe o nome da compra ou desejo." });
+      return;
+    }
+    if (Number(values.estimated_amount) < 0) {
+      setFeedback({ type: "error", message: "O valor estimado deve ser maior ou igual a zero." });
+      return;
+    }
+    if (values.installment_count && Number(values.installment_count) <= 0) {
+      setFeedback({ type: "error", message: "O número de parcelas deve ser maior que zero." });
+      return;
+    }
+    if (!userId) {
+      setFeedback({ type: "error", message: "Sessão não encontrada. Entre novamente." });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const client = createClient();
+      const result = modal?.mode === "edit"
+        ? await updatePlannedPurchase(client, modal.item.id, values)
+        : await createPlannedPurchase(client, userId, values);
+
+      if (result.error) {
+        console.error("Erro técnico ao salvar compra planejada:", result.error);
+        setFeedback({ type: "error", message: result.error.message });
+        return;
+      }
+
+      setFeedback({ type: "success", message: modal?.mode === "edit" ? "Compra atualizada." : "Compra adicionada." });
+      setModal(null);
+      await loadData();
+    } catch (error) {
+      console.error("Erro técnico ao salvar compra planejada:", error);
+      setFeedback({ type: "error", message: "Não foi possível salvar a compra planejada." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(item: PlannedPurchaseRow) {
+    if (!window.confirm("Excluir esta compra planejada?")) return;
+    const { error } = await deletePlannedPurchase(createClient(), item.id);
+    if (error) {
+      console.error("Erro técnico ao excluir compra planejada:", error);
+      setFeedback({ type: "error", message: error.message });
+    } else {
+      setFeedback({ type: "success", message: "Compra excluída." });
+      await loadData();
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Decisão futura"
+        title="Compras e desejos"
+        description="Organize compras planejadas antes que elas pressionem o caixa ou a próxima fatura."
+        action={<ActionButton onClick={() => setModal({ mode: "create", item: null })}>Nova compra</ActionButton>}
+      />
+      <CrudFeedback feedback={feedback} />
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Em análise" value={formatCurrency(summary.totalActive)} helper={`${summary.count} itens ativos.`} tone="info" />
+        <StatCard label="Alta prioridade" value={formatCurrency(summary.highRiskTotal)} helper="Pode afetar decisões do mês." tone="warning" />
+        <StatCard label="Aprovadas" value={formatCurrency(summary.approvedTotal)} helper="Tendem a virar obrigação." tone="danger" />
+        <StatCard label="Impacto futuro" value={String(summary.count)} helper="Compras não realizadas ainda." tone="neutral" />
+      </section>
+
+      <SectionCard title="Lista de compras" description="Compras planejadas não são contas ainda, mas podem virar pressão no caixa.">
+        <div className="mb-4 grid gap-3 md:grid-cols-3">
+          <input value={search} onChange={(event) => setSearch(event.target.value)} className={inputClassName} placeholder="Buscar por nome ou descrição" />
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className={inputClassName}>
+            <option value="all">Todos os status</option>
+            {decisionStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value)} className={inputClassName}>
+            <option value="all">Todos os riscos</option>
+            {priorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </div>
+        {loading ? (
+          <p className="text-sm text-ink-600">Carregando compras...</p>
+        ) : filtered.length === 0 ? (
+          <EmptyState title="Nenhuma compra planejada" description="Cadastre desejos e compras futuras para enxergar impacto antes da decisão." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600">
+                <tr>
+                  <th className="px-4 py-3">Compra</th>
+                  <th className="px-4 py-3">Valor</th>
+                  <th className="px-4 py-3">Data alvo</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Risco</th>
+                  <th className="px-4 py-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-950/10">
+                {filtered.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-ink-950">{item.title}</p>
+                      <p className="text-xs text-ink-600">{item.description ?? "Sem descrição"}</p>
+                    </td>
+                    <td className="px-4 py-3 text-ink-950">{formatCurrency(Number(item.estimated_amount))}</td>
+                    <td className="px-4 py-3 text-ink-600">{formatDate(item.target_date)}</td>
+                    <td className="px-4 py-3"><TextBadge tone={item.decision_status === "approved" ? "danger" : item.decision_status === "purchased" ? "success" : "neutral"}>{optionLabel(decisionStatusOptions, item.decision_status)}</TextBadge></td>
+                    <td className="px-4 py-3 text-ink-600">{optionLabel(priorityOptions, item.risk_level)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <ActionButton variant="secondary" onClick={() => setModal({ mode: "edit", item })}>Editar</ActionButton>
+                        <ActionButton variant="danger" onClick={() => void handleDelete(item)}>Excluir</ActionButton>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
+
+      {modal ? <PlannedPurchaseModal modal={modal} saving={saving} support={support} onClose={() => setModal(null)} onSubmit={(values) => void handleSubmit(values)} /> : null}
+    </div>
+  );
+}
+
+function PlannedPurchaseModal({ modal, saving, support, onClose, onSubmit }: { modal: ModalState; saving: boolean; support: PlannedPurchaseSupportData; onClose: () => void; onSubmit: (values: PlannedPurchaseFormValues) => void }) {
+  const [values, setValues] = useState<PlannedPurchaseFormValues>(modal?.mode === "edit" ? plannedPurchaseToFormValues(modal.item) : emptyPlannedPurchaseForm);
+
+  return (
+    <Modal title={modal?.mode === "edit" ? "Editar compra" : "Nova compra"} description="Use para simular desejos antes que virem gasto real." onClose={onClose}>
+      <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); onSubmit(values); }}>
+        <div className="md:col-span-2"><FieldShell label="Nome"><input required className={inputClassName} value={values.title} onChange={(event) => setValues({ ...values, title: event.target.value })} /></FieldShell></div>
+        <div className="md:col-span-2"><FieldShell label="Descrição"><textarea rows={3} className={inputClassName} value={values.description} onChange={(event) => setValues({ ...values, description: event.target.value })} /></FieldShell></div>
+        <FieldShell label="Valor estimado"><input min="0" step="0.01" type="number" className={inputClassName} value={values.estimated_amount} onChange={(event) => setValues({ ...values, estimated_amount: event.target.value })} /></FieldShell>
+        <FieldShell label="Data alvo"><input type="date" className={inputClassName} value={values.target_date} onChange={(event) => setValues({ ...values, target_date: event.target.value })} /></FieldShell>
+        <FieldShell label="Categoria"><select className={inputClassName} value={values.category_id} onChange={(event) => setValues({ ...values, category_id: event.target.value })}><option value="">Sem categoria</option>{support.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></FieldShell>
+        <FieldShell label="Forma planejada"><select className={inputClassName} value={values.payment_method} onChange={(event) => setValues({ ...values, payment_method: event.target.value })}>{paymentMethodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FieldShell>
+        <FieldShell label="Parcelas"><input min="1" type="number" className={inputClassName} value={values.installment_count} onChange={(event) => setValues({ ...values, installment_count: event.target.value })} /></FieldShell>
+        <FieldShell label="Status"><select className={inputClassName} value={values.decision_status} onChange={(event) => setValues({ ...values, decision_status: event.target.value })}>{decisionStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FieldShell>
+        <FieldShell label="Risco"><select className={inputClassName} value={values.risk_level} onChange={(event) => setValues({ ...values, risk_level: event.target.value as PlannedPurchaseFormValues["risk_level"] })}>{priorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FieldShell>
+        <div className="md:col-span-2"><FieldShell label="Notas"><textarea rows={3} className={inputClassName} value={values.notes} onChange={(event) => setValues({ ...values, notes: event.target.value })} /></FieldShell></div>
+        <div className="flex justify-end gap-2 md:col-span-2"><ActionButton type="button" variant="secondary" onClick={onClose}>Cancelar</ActionButton><ActionButton type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</ActionButton></div>
+      </form>
+    </Modal>
+  );
+}

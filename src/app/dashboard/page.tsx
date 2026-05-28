@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
+import { buildFinancialSummary, type DecisionItem } from "@/features/decision/financial-summary";
 import { calculatePaymentPlanScenario } from "@/features/payment-plans/simulator";
 import { formatCurrency, formatDate, todayISO } from "@/features/shared/format";
 import { createClient } from "@/lib/supabase/server";
@@ -14,8 +15,10 @@ import type {
   IncomeSource,
   Installment,
   ImportBatch,
+  Note,
   PaymentPlan,
   PaymentPlanItem,
+  PlannedPurchase,
   Reimbursement,
 } from "@/lib/supabase/types";
 
@@ -37,6 +40,8 @@ export default async function DashboardPage() {
     transactionsResult,
     reimbursementsResult,
     installmentsResult,
+    purchasesResult,
+    notesResult,
     activePlanResult,
     importsResult,
   ] =
@@ -47,6 +52,8 @@ export default async function DashboardPage() {
     supabase.from("credit_card_transactions").select("*"),
     supabase.from("reimbursements").select("*"),
     supabase.from("installments").select("*"),
+    supabase.from("planned_purchases").select("*"),
+    supabase.from("notes").select("*").order("updated_at", { ascending: false }).limit(5),
     supabase.from("payment_plans").select("*").eq("status", "active").order("reference_month", { ascending: false }).limit(1),
     supabase.from("import_batches").select("*").order("created_at", { ascending: false }).limit(1),
   ]);
@@ -63,6 +70,8 @@ export default async function DashboardPage() {
     transactionsResult.error ||
     reimbursementsResult.error ||
     installmentsResult.error ||
+    purchasesResult.error ||
+    notesResult.error ||
     activePlanResult.error ||
     importsResult.error ||
     activePlanItemsResult.error
@@ -76,6 +85,8 @@ export default async function DashboardPage() {
           transactionsResult.error?.message ??
           reimbursementsResult.error?.message ??
           installmentsResult.error?.message ??
+          purchasesResult.error?.message ??
+          notesResult.error?.message ??
           activePlanResult.error?.message ??
           importsResult.error?.message ??
           activePlanItemsResult.error?.message ??
@@ -91,6 +102,8 @@ export default async function DashboardPage() {
   const transactions = transactionsResult.data ?? [];
   const reimbursements = reimbursementsResult.data ?? [];
   const installments = installmentsResult.data ?? [];
+  const plannedPurchases = purchasesResult.data ?? [];
+  const notes = notesResult.data ?? [];
   const lastImport = importsResult.data?.[0] ?? null;
   const activePlanItems = activePlanItemsResult.data ?? [];
   const summary = buildDashboardSummary(
@@ -100,10 +113,22 @@ export default async function DashboardPage() {
     transactions,
     reimbursements,
     installments,
+    plannedPurchases,
+    notes,
     activePlan,
     activePlanItems,
     lastImport,
   );
+  const decisionSummary = buildFinancialSummary({
+    accounts,
+    incomeSources,
+    invoices,
+    transactions,
+    reimbursements,
+    installments,
+    activePlan,
+    activePlanItems,
+  });
 
   return (
     <div className="space-y-6">
@@ -161,6 +186,72 @@ export default async function DashboardPage() {
           value={formatCurrency(summary.estimatedNetPersonalCost)}
           helper="Faturas abertas menos reembolsos esperados."
           tone="info"
+        />
+        <StatCard
+          label="Compras planejadas"
+          value={formatCurrency(summary.plannedPurchasePressure)}
+          helper="Desejos ativos que podem virar gasto."
+          tone={summary.plannedPurchasePressure > 0 ? "warning" : "neutral"}
+        />
+        <StatCard
+          label="Notas fixadas"
+          value={String(summary.pinnedNotesCount)}
+          helper="Lembretes importantes para decisões."
+          tone={summary.pinnedNotesCount > 0 ? "info" : "neutral"}
+        />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <DecisionList
+          title="Pagar agora"
+          description="Itens vencidos, críticos ou que não foram marcados como seguros para atrasar."
+          items={decisionSummary.payNowItems}
+          empty="Nenhum item crítico para pagar agora."
+        />
+        <DecisionList
+          title="Pode esperar"
+          description="Itens com atraso permitido e risco controlado."
+          items={decisionSummary.canWaitItems}
+          empty="Nenhum item claramente seguro para esperar."
+        />
+        <DecisionList
+          title="Atenção na próxima fatura"
+          description="Faturas e parcelas que pressionam o cartão e o próximo mês."
+          items={decisionSummary.nextInvoiceItems}
+          empty="Sem pressão relevante de fatura no mês atual."
+        />
+        <DecisionList
+          title="Risco alto do mês"
+          description="Valores atrasados, críticos ou de alta prioridade."
+          items={decisionSummary.highRiskItems}
+          empty="Nenhum risco alto identificado."
+        />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Saldo livre estimado"
+          value={formatCurrency(decisionSummary.freeCashAfterRealObligations)}
+          helper="Renda real menos obrigações. Não conta reembolsos como renda livre."
+          tone={decisionSummary.freeCashAfterRealObligations < 0 ? "danger" : "success"}
+        />
+        <StatCard
+          label="Dependência de terceiros"
+          value={formatCurrency(decisionSummary.linkedMoneyExpected)}
+          helper="Reembolsos e dinheiro de terceiros esperados."
+          tone={decisionSummary.linkedMoneyExpected > 0 ? "warning" : "neutral"}
+        />
+        <StatCard
+          label="Pressão do próximo mês"
+          value={formatCurrency(decisionSummary.nextMonthPressure)}
+          helper="Contas, faturas e parcelas futuras."
+          tone="warning"
+        />
+        <StatCard
+          label="Risco alto"
+          value={formatCurrency(decisionSummary.highRiskAmount)}
+          helper="Contas e faturas de maior risco."
+          tone={decisionSummary.highRiskAmount > 0 ? "danger" : "neutral"}
         />
       </section>
 
@@ -226,6 +317,26 @@ export default async function DashboardPage() {
             <EmptyState title="Nenhuma importação" description="Importações salvas aparecerão aqui depois do primeiro CSV ou XLSX." />
           )}
         </SectionCard>
+        <SectionCard title="Compras e notas" description="Sinais leves para decisões futuras.">
+          <p className="text-sm leading-6 text-ink-600">
+            Há {summary.activePlannedPurchaseCount} compras planejadas ativas, somando
+            {" "}{formatCurrency(summary.plannedPurchasePressure)}. Notas fixadas: {summary.pinnedNotesCount}.
+          </p>
+          {notes.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              {notes.slice(0, 3).map((note) => (
+                <Link
+                  key={note.id}
+                  href="/dashboard/notes"
+                  className="block rounded-md border border-ink-950/10 p-3 text-sm transition hover:border-mint-500"
+                >
+                  <span className="font-semibold text-ink-950">{note.title || "Nota sem título"}</span>
+                  <span className="ml-2 text-ink-600">{note.pinned ? "Fixada" : "Recente"}</span>
+                </Link>
+              ))}
+            </div>
+          ) : null}
+        </SectionCard>
       </section>
 
       <SectionCard title="Fluxo dos próximos dias" description="Contas e entradas previstas mais próximas.">
@@ -265,6 +376,49 @@ export default async function DashboardPage() {
   );
 }
 
+function DecisionList({
+  title,
+  description,
+  items,
+  empty,
+}: {
+  title: string;
+  description: string;
+  items: DecisionItem[];
+  empty: string;
+}) {
+  return (
+    <SectionCard title={title} description={description}>
+      {items.length === 0 ? (
+        <EmptyState title={empty} description="Os itens aparecerão aqui conforme contas, faturas e parcelas forem cadastradas." />
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => (
+            <Link
+              key={`${item.href}-${item.id}`}
+              href={item.href}
+              className="block rounded-md border border-ink-950/10 bg-white p-4 transition hover:border-mint-500"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-ink-950">{item.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-ink-600">{item.reason}</p>
+                  <p className="mt-1 text-xs font-medium uppercase tracking-[0.12em] text-ink-500">
+                    {formatDate(item.dueDate)}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-semibold text-ink-950">
+                  {formatCurrency(item.amount)}
+                </p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 function DashboardError({ message }: { message: string }) {
   return (
     <div className="space-y-6">
@@ -287,6 +441,8 @@ function buildDashboardSummary(
   transactions: CreditCardTransaction[],
   reimbursements: Reimbursement[],
   installments: Installment[],
+  plannedPurchases: PlannedPurchase[],
+  notes: Note[],
   activePlan: PaymentPlan | null,
   activePlanItems: PaymentPlanItem[],
   lastImport: ImportBatch | null,
@@ -350,6 +506,15 @@ function buildDashboardSummary(
     .filter((item) => item.status === "active")
     .reduce((total, item) => total + Number(item.installment_amount), 0);
 
+  const activePlannedPurchases = plannedPurchases.filter((item) =>
+    !["purchased", "canceled"].includes(item.decision_status),
+  );
+  const plannedPurchasePressure = activePlannedPurchases.reduce(
+    (total, item) => total + Number(item.estimated_amount),
+    0,
+  );
+  const pinnedNotesCount = notes.filter((note) => note.pinned).length;
+
   const activePlanSimulation = activePlan
     ? calculatePaymentPlanScenario({
         items: activePlanItems,
@@ -406,6 +571,9 @@ function buildDashboardSummary(
     activePlanCriticalRisk: activePlanSimulation?.criticalRiskAmount ?? 0,
     activePlanReimbursementDependency: activePlanSimulation?.reimbursementsExpected ?? openReimbursements,
     activeInstallmentMonthlyAmount,
+    plannedPurchasePressure,
+    activePlannedPurchaseCount: activePlannedPurchases.length,
+    pinnedNotesCount,
     lastImport,
     openInvoiceCount: openInvoices.length,
     openReimbursementCount: reimbursements.filter((item) =>

@@ -1,10 +1,9 @@
-import { ModulePlaceholderPage } from "@/components/modules/module-placeholder-page";
+import { GoalsRoadmap } from "@/features/goals/components/goals-roadmap";
 
 export const metadata = {
   title: "Metas",
 };
 
 export default function GoalsPage() {
-  return <ModulePlaceholderPage moduleKey="goals" />;
+  return <GoalsRoadmap />;
 }
-

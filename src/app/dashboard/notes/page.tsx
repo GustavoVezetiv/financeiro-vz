@@ -1,10 +1,9 @@
-import { ModulePlaceholderPage } from "@/components/modules/module-placeholder-page";
+import { NotesCrud } from "@/features/notes/components/notes-crud";
 
 export const metadata = {
   title: "Notas",
 };
 
 export default function NotesPage() {
-  return <ModulePlaceholderPage moduleKey="notes" />;
+  return <NotesCrud />;
 }
-

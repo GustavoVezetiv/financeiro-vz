@@ -142,12 +142,9 @@ The MVP should include:
 
 The MVP should not include:
 
-- Open Finance integration
-- OCR
-- WhatsApp automation
+- Open Finance integration, OCR, WhatsApp automation, PDF parsing, scraping and AI features
 - Native mobile app
 - Complex multi-user collaboration
 - Automated bank sync
 - Advanced investment tracking
 - Full accounting reports
-

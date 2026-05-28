@@ -114,11 +114,8 @@ Phase 2 should deepen planning, imports, and operational usability.
 
 ## Future
 
-Future work can expand automation, integrations, and intelligence after the core workflows are stable.
+Future work should stay focused on manual decision support, data quality, beta validation and UX polish.
 
-- Open Finance integration.
-- OCR for invoices and receipts.
-- WhatsApp reminders or ingestion.
 - Multi-user collaboration or shared household mode.
 - Advanced role-based permissions.
 - Native mobile app.
@@ -126,6 +123,3 @@ Future work can expand automation, integrations, and intelligence after the core
 - More advanced forecasting.
 - Investment tracking.
 - Debt payoff optimization.
-- AI-assisted import categorization.
-- AI-assisted monthly decision summaries.
-

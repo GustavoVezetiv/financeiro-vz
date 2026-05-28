@@ -67,6 +67,5 @@ Financeiro VZ private beta deployment checklist for Vercel + Supabase.
 - Imports are stable only for people, categories, accounts payable and income sources.
 - Import preview rows can be skipped, but not edited inline yet.
 - Missing referenced people or categories are not auto-created.
-- No Open Finance integration exists.
-- No OCR, PDF parsing, WhatsApp automation, XP invoice scraping or AI classification exists.
+- Open Finance, OCR, PDF parsing, WhatsApp automation, XP invoice scraping and AI classification are intentionally out of scope.
 - Some secondary routes are visible as "Em breve" placeholders for navigation continuity.

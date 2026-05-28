@@ -55,9 +55,7 @@ Implemented in the foundation phase:
 - Responsive dashboard shell
 - Sidebar navigation
 - Top header
-- Placeholder routes for all planned MVP modules
 - Reusable base UI components
-- Isolated static mock data in `src/lib/mock-data.ts`
 - Supabase client utilities
 - Supabase Auth login and signup UI
 - Protected dashboard routes
@@ -77,12 +75,19 @@ Implemented in the foundation phase:
 - CSV template downloads for the MVP import targets
 - CSV/XLSX import preview, validation, skip and confirmation flow for people, categories, accounts payable and income sources
 - Dashboard summaries using real account, income, invoice, transaction, reimbursement, installment and payment plan data
+- User-owned roadmap goals in `/dashboard/goals`
+- Decision-focused dashboard sections for pay now, can wait, next invoice pressure and monthly risk
+- Monthly cash-flow view with real income separated from reimbursements and third-party money
+- Reimbursement visibility by responsible person and linked source
+- CRUD for planned purchases and wishes
+- CRUD for notes
+- Functional user settings backed by `profiles`
 
 Not implemented yet:
 
 - Inline editing of preview rows
 - Automatic creation of missing references during import
-- AI-assisted classification
+- Final UX polish and final beta validation pass
 
 ## Development Setup
 
@@ -238,6 +243,16 @@ Run it after the payment plans migration. It adds import metadata and status sup
 - Additional import statuses for parsed, confirmed, failed and skipped flows
 - Import preview metadata for the stabilized MVP import flow
 
+The payment plan item type constraint migration lives at:
+
+```bash
+supabase/migrations/202605280001_extend_payment_plan_item_type_check.sql
+```
+
+Run it after the import preview migration. It updates the `payment_plan_items.item_type`
+check constraint so plan items can safely link to installments, reimbursements and
+income sources, matching the payment planner UI.
+
 ## Authentication
 
 The `/login` route supports:
@@ -281,6 +296,11 @@ The first real CRUD set is implemented under authenticated dashboard routes:
 - `/dashboard/payment-plans`
 - `/dashboard/payment-plans/[id]`
 - `/dashboard/imports`
+- `/dashboard/goals`
+- `/dashboard/cash-flow`
+- `/dashboard/purchases`
+- `/dashboard/notes`
+- `/dashboard/settings`
 
 These pages persist data in Supabase and rely on RLS for user isolation. Inserts send the authenticated user's `user_id`, and reads/updates/deletes are still constrained by database policies.
 
@@ -297,6 +317,9 @@ Current tables used by the app:
 - `installments`
 - `payment_plans`
 - `payment_plan_items`
+- `planned_purchases`
+- `notes`
+- `profiles`
 - `import_batches`
 - `import_rows`
 
@@ -310,9 +333,44 @@ The dashboard now reads:
 - `installments`
 - `payment_plans`
 - `payment_plan_items`
+- `planned_purchases`
+- `notes`
 - `import_batches`
 
 Reimbursements and third-party money are displayed separately from real income. The projected balance can include them for cash-flow visibility, but the UI warns that they are not free income. Invoice transaction ownership distinguishes personal expenses from third-party, shared and family expenses.
+
+## Metas as Roadmap Organizer
+
+The `/dashboard/goals` route now uses the `goals` table as a user-owned product roadmap organizer.
+
+The page includes a safe action to create roadmap goals for the authenticated user:
+
+- Consolidar dashboard decisório
+- Melhorar fluxo de caixa mensal
+- Fortalecer vínculo de reembolsos
+- Integrar pagamento com status
+- Amadurecer planos de pagamento
+- Expandir importações
+- Melhorar prévia de importação
+- Revisar módulos Em breve
+
+These goals are not global seed data. They are inserted with the authenticated user's `user_id` and remain protected by RLS.
+
+## Decision Dashboard and Cash Flow
+
+The dashboard and cash-flow route use deterministic calculations from the current Supabase data.
+
+Main calculation rules:
+
+- Real income expected: expected `income_sources` where `inflow_kind = real_income`.
+- Reimbursements expected: expected `income_sources` where `inflow_kind = reimbursement` plus open `reimbursements`.
+- Third-party money expected: expected `income_sources` where `inflow_kind = third_party_money`.
+- Pending obligations: pending or overdue accounts, open invoices and active installments.
+- Projected balance: real income + linked money - pending obligations.
+- Free cash after real obligations: real income - pending obligations.
+- Next month pressure: next-month accounts, invoices and installments.
+
+Important: projected balance can include reimbursements and third-party money for visibility, but the UI keeps them visually separated because they are not free income.
 
 ## Payment Plans and Simulator
 
@@ -351,7 +409,6 @@ The simulator calculates:
 Known limitations:
 
 - Calculations are deterministic and rule-based only.
-- There are no AI recommendations.
 - Plan item links are stored directly where the schema supports them, but no automatic status synchronization is implemented yet.
 - Reimbursements and third-party money can help cash flow, but the UI treats them as linked money, not free income.
 
@@ -405,7 +462,7 @@ Known limitations:
 - Import confirmation uses partial success: valid rows can import while failed rows are marked with errors.
 - XLSX/CSV parsing runs in the browser using `xlsx`.
 - Credit card, invoice, transaction, reimbursement, installment, planned purchase and goal imports are intentionally disabled until their templates are stabilized.
-- No Open Finance, OCR, PDF parsing, card scraping or AI classification is implemented.
+- Open Finance, OCR, PDF parsing, card scraping, WhatsApp and AI classification are intentionally out of scope.
 
 ## Deployment
 
@@ -481,11 +538,11 @@ npm run dev
 
 ## Next Planned Step
 
-The next planned step is implementing:
+The next planned step is a later final pass:
 
-1. UX polish
-2. Performance pass
-3. Deployment preparation
+1. Final beta validation with the user's checklist
+2. UX polish and responsive refinements
+3. Performance review after real usage
 
 ## Development Philosophy
 
