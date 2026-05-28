@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
+import { buildFinancialSummary, type DecisionItem } from "@/features/decision/financial-summary";
 import { calculatePaymentPlanScenario } from "@/features/payment-plans/simulator";
 import { formatCurrency, formatDate, todayISO } from "@/features/shared/format";
 import { createClient } from "@/lib/supabase/server";
@@ -104,6 +105,16 @@ export default async function DashboardPage() {
     activePlanItems,
     lastImport,
   );
+  const decisionSummary = buildFinancialSummary({
+    accounts,
+    incomeSources,
+    invoices,
+    transactions,
+    reimbursements,
+    installments,
+    activePlan,
+    activePlanItems,
+  });
 
   return (
     <div className="space-y-6">
@@ -161,6 +172,60 @@ export default async function DashboardPage() {
           value={formatCurrency(summary.estimatedNetPersonalCost)}
           helper="Faturas abertas menos reembolsos esperados."
           tone="info"
+        />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <DecisionList
+          title="Pagar agora"
+          description="Itens vencidos, críticos ou que não foram marcados como seguros para atrasar."
+          items={decisionSummary.payNowItems}
+          empty="Nenhum item crítico para pagar agora."
+        />
+        <DecisionList
+          title="Pode esperar"
+          description="Itens com atraso permitido e risco controlado."
+          items={decisionSummary.canWaitItems}
+          empty="Nenhum item claramente seguro para esperar."
+        />
+        <DecisionList
+          title="Atenção na próxima fatura"
+          description="Faturas e parcelas que pressionam o cartão e o próximo mês."
+          items={decisionSummary.nextInvoiceItems}
+          empty="Sem pressão relevante de fatura no mês atual."
+        />
+        <DecisionList
+          title="Risco alto do mês"
+          description="Valores atrasados, críticos ou de alta prioridade."
+          items={decisionSummary.highRiskItems}
+          empty="Nenhum risco alto identificado."
+        />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Saldo livre estimado"
+          value={formatCurrency(decisionSummary.freeCashAfterRealObligations)}
+          helper="Renda real menos obrigações. Não conta reembolsos como renda livre."
+          tone={decisionSummary.freeCashAfterRealObligations < 0 ? "danger" : "success"}
+        />
+        <StatCard
+          label="Dependência de terceiros"
+          value={formatCurrency(decisionSummary.linkedMoneyExpected)}
+          helper="Reembolsos e dinheiro de terceiros esperados."
+          tone={decisionSummary.linkedMoneyExpected > 0 ? "warning" : "neutral"}
+        />
+        <StatCard
+          label="Pressão do próximo mês"
+          value={formatCurrency(decisionSummary.nextMonthPressure)}
+          helper="Contas, faturas e parcelas futuras."
+          tone="warning"
+        />
+        <StatCard
+          label="Risco alto"
+          value={formatCurrency(decisionSummary.highRiskAmount)}
+          helper="Contas e faturas de maior risco."
+          tone={decisionSummary.highRiskAmount > 0 ? "danger" : "neutral"}
         />
       </section>
 
@@ -262,6 +327,49 @@ export default async function DashboardPage() {
         </div>
       </SectionCard>
     </div>
+  );
+}
+
+function DecisionList({
+  title,
+  description,
+  items,
+  empty,
+}: {
+  title: string;
+  description: string;
+  items: DecisionItem[];
+  empty: string;
+}) {
+  return (
+    <SectionCard title={title} description={description}>
+      {items.length === 0 ? (
+        <EmptyState title={empty} description="Os itens aparecerão aqui conforme contas, faturas e parcelas forem cadastradas." />
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => (
+            <Link
+              key={`${item.href}-${item.id}`}
+              href={item.href}
+              className="block rounded-md border border-ink-950/10 bg-white p-4 transition hover:border-mint-500"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-ink-950">{item.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-ink-600">{item.reason}</p>
+                  <p className="mt-1 text-xs font-medium uppercase tracking-[0.12em] text-ink-500">
+                    {formatDate(item.dueDate)}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-semibold text-ink-950">
+                  {formatCurrency(item.amount)}
+                </p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </SectionCard>
   );
 }
 

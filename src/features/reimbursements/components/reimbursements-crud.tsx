@@ -54,7 +54,11 @@ export function ReimbursementsCrud() {
 
     return reimbursements.filter((reimbursement) => {
       const personName = people.find((person) => person.id === reimbursement.person_id)?.name ?? "";
-      const hasTransaction = Boolean(reimbursement.credit_card_transaction_id);
+      const hasLink = Boolean(
+        reimbursement.credit_card_transaction_id ||
+          reimbursement.account_payable_id ||
+          reimbursement.income_source_id,
+      );
 
       return (
         (!needle ||
@@ -63,8 +67,8 @@ export function ReimbursementsCrud() {
         (personFilter === "all" || reimbursement.person_id === personFilter) &&
         (statusFilter === "all" || reimbursement.status === statusFilter) &&
         (linkedFilter === "all" ||
-          (linkedFilter === "linked" && hasTransaction) ||
-          (linkedFilter === "manual" && !hasTransaction)) &&
+          (linkedFilter === "linked" && hasLink) ||
+          (linkedFilter === "manual" && !hasLink)) &&
         (!dateFrom || (reimbursement.expected_date ?? "") >= dateFrom) &&
         (!dateTo || (reimbursement.expected_date ?? "") <= dateTo)
       );
@@ -86,9 +90,34 @@ export function ReimbursementsCrud() {
     const amountOwed = reimbursements
       .filter(isOpen)
       .reduce((sum, item) => sum + Number(item.expected_amount) - Number(item.received_amount), 0);
+    const linkedGrossAmount = reimbursements.reduce((sum, item) => {
+      const transaction = transactions.find((transactionItem) => transactionItem.id === item.credit_card_transaction_id);
+      const account = accounts.find((accountItem) => accountItem.id === item.account_payable_id);
 
-    return { totalExpected, totalReceived, lateAmount, partialAmount, amountOwed };
-  }, [reimbursements]);
+      return sum + Number(transaction?.amount ?? account?.amount ?? item.expected_amount ?? 0);
+    }, 0);
+    const estimatedPersonalCost = Math.max(linkedGrossAmount - amountOwed, 0);
+
+    return { totalExpected, totalReceived, lateAmount, partialAmount, amountOwed, estimatedPersonalCost };
+  }, [accounts, reimbursements, transactions]);
+
+  const peopleSummary = useMemo(() => {
+    return people
+      .map((person) => {
+        const personRows = reimbursements.filter((item) => item.person_id === person.id);
+        const openRows = personRows.filter((item) => ["expected", "partial", "late"].includes(item.status));
+        const expected = openRows.reduce((sum, item) => sum + Number(item.expected_amount), 0);
+        const received = personRows.reduce((sum, item) => sum + Number(item.received_amount), 0);
+        const open = openRows.reduce((sum, item) => sum + Number(item.expected_amount) - Number(item.received_amount), 0);
+        const late = personRows
+          .filter((item) => item.status === "late")
+          .reduce((sum, item) => sum + Number(item.expected_amount) - Number(item.received_amount), 0);
+
+        return { person, expected, received, open, late, count: personRows.length };
+      })
+      .filter((item) => item.count > 0)
+      .sort((a, b) => b.open - a.open);
+  }, [people, reimbursements]);
 
   async function loadData() {
     setLoading(true);
@@ -164,12 +193,13 @@ export function ReimbursementsCrud() {
       />
       <CrudFeedback feedback={feedback} />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <StatCard label="A receber" value={formatCurrency(summary.totalExpected)} helper="Não é renda livre." tone="warning" />
         <StatCard label="Recebido" value={formatCurrency(summary.totalReceived)} helper="Pix já recebido." tone="success" />
         <StatCard label="Atrasado" value={formatCurrency(summary.lateAmount)} helper="Maior risco de caixa." tone="danger" />
         <StatCard label="Parcial" value={formatCurrency(summary.partialAmount)} helper="Ainda falta receber." tone="warning" />
         <StatCard label="Pessoas devem" value={formatCurrency(summary.amountOwed)} helper="Saldo aberto." tone="info" />
+        <StatCard label="Custo pessoal estimado" value={formatCurrency(summary.estimatedPersonalCost)} helper="Valor vinculado menos saldo aberto." tone="info" />
       </section>
 
       <SectionCard title="Separação importante" description="Reembolso existe para compensar despesa paga antes.">
@@ -177,6 +207,33 @@ export function ReimbursementsCrud() {
           Mesmo quando entra via Pix, esse valor deve ser lido como dinheiro vinculado a uma compra,
           conta ou favor financeiro. Ele não aumenta sua renda real disponível.
         </p>
+      </SectionCard>
+
+      <SectionCard title="Quem deve agora" description="Resumo por pessoa responsável.">
+        {peopleSummary.length === 0 ? (
+          <EmptyState title="Nenhuma pessoa com reembolso" description="Quando houver reembolsos, o resumo por pessoa aparecerá aqui." />
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {peopleSummary.map((item) => (
+              <div key={item.person.id} className="rounded-md border border-ink-950/10 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-ink-950">{item.person.name}</p>
+                    <p className="mt-1 text-sm text-ink-600">{item.count} reembolso(s)</p>
+                  </div>
+                  <TextBadge tone={item.late > 0 ? "danger" : item.open > 0 ? "warning" : "success"}>
+                    {item.late > 0 ? "Atrasado" : item.open > 0 ? "Aberto" : "Recebido"}
+                  </TextBadge>
+                </div>
+                <div className="mt-4 grid gap-2 text-sm text-ink-600">
+                  <p>Esperado: <strong className="text-ink-950">{formatCurrency(item.expected)}</strong></p>
+                  <p>Recebido: <strong className="text-ink-950">{formatCurrency(item.received)}</strong></p>
+                  <p>Em aberto: <strong className="text-ink-950">{formatCurrency(item.open)}</strong></p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </SectionCard>
 
       <SectionCard title="Filtros">
@@ -234,8 +291,8 @@ export function ReimbursementsCrud() {
                       {optionLabel(reimbursementStatusOptions, reimbursement.status)}
                     </td>
                     <td className="px-4 py-3">
-                      <TextBadge tone={reimbursement.credit_card_transaction_id ? "info" : "neutral"}>
-                        {reimbursement.credit_card_transaction_id ? "Lançamento" : "Manual"}
+                      <TextBadge tone={getLinkedTone(reimbursement)}>
+                        {getLinkedLabel(reimbursement, transactions, accounts, income)}
                       </TextBadge>
                     </td>
                     <td className="px-4 py-3">
@@ -366,4 +423,35 @@ function ReimbursementModal({
       </form>
     </Modal>
   );
+}
+
+function getLinkedLabel(
+  reimbursement: ReimbursementRow,
+  transactions: ReimbursementTransaction[],
+  accounts: ReimbursementAccount[],
+  income: ReimbursementIncome[],
+) {
+  if (reimbursement.credit_card_transaction_id) {
+    const transaction = transactions.find((item) => item.id === reimbursement.credit_card_transaction_id);
+    return transaction ? `Cartão: ${transaction.description}` : "Lançamento de cartão";
+  }
+
+  if (reimbursement.account_payable_id) {
+    const account = accounts.find((item) => item.id === reimbursement.account_payable_id);
+    return account ? `Conta: ${account.title}` : "Conta vinculada";
+  }
+
+  if (reimbursement.income_source_id) {
+    const incomeSource = income.find((item) => item.id === reimbursement.income_source_id);
+    return incomeSource ? `Receita: ${incomeSource.name}` : "Receita relacionada";
+  }
+
+  return "Manual";
+}
+
+function getLinkedTone(reimbursement: ReimbursementRow) {
+  if (reimbursement.credit_card_transaction_id) return "info";
+  if (reimbursement.account_payable_id) return "warning";
+  if (reimbursement.income_source_id) return "success";
+  return "neutral";
 }
