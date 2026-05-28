@@ -243,6 +243,16 @@ Run it after the payment plans migration. It adds import metadata and status sup
 - Additional import statuses for parsed, confirmed, failed and skipped flows
 - Import preview metadata for the stabilized MVP import flow
 
+The payment plan item type constraint migration lives at:
+
+```bash
+supabase/migrations/202605280001_extend_payment_plan_item_type_check.sql
+```
+
+Run it after the import preview migration. It updates the `payment_plan_items.item_type`
+check constraint so plan items can safely link to installments, reimbursements and
+income sources, matching the payment planner UI.
+
 ## Authentication
 
 The `/login` route supports:
