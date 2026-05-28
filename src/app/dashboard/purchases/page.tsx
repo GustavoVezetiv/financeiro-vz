@@ -1,10 +1,9 @@
-import { ModulePlaceholderPage } from "@/components/modules/module-placeholder-page";
+import { PlannedPurchasesCrud } from "@/features/planned-purchases/components/planned-purchases-crud";
 
 export const metadata = {
   title: "Compras e desejos",
 };
 
 export default function PurchasesPage() {
-  return <ModulePlaceholderPage moduleKey="purchases" />;
+  return <PlannedPurchasesCrud />;
 }
-

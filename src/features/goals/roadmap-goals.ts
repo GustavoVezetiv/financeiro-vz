@@ -15,7 +15,6 @@ export const roadmapGoals: RoadmapGoal[] = [
   { name: "Expandir importações", priority: "medium", area: "Entrada rápida" },
   { name: "Melhorar prévia de importação", priority: "medium", area: "Entrada rápida" },
   { name: "Revisar módulos Em breve", priority: "low", area: "Beta privado" },
-  { name: "Preparar automações futuras", priority: "low", area: "Roadmap futuro" },
 ];
 
 export function getRoadmapGoalMetadata(goal: Goal) {

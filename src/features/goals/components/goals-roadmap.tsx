@@ -103,7 +103,7 @@ export function GoalsRoadmap() {
       <SectionCard title="Como usar as metas" description="Organização de trabalho, não renda livre nem obrigação financeira.">
         <p className="text-sm leading-6 text-ink-600">
           Estas metas representam as frentes do produto: dashboard decisório, fluxo de caixa,
-          reembolsos, status de pagamento, importações e automações futuras. Elas não criam dados
+          reembolsos, status de pagamento, importações e validação beta. Elas não criam dados
           globais; cada meta pertence ao usuário autenticado pela política de RLS.
         </p>
       </SectionCard>

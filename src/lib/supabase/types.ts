@@ -24,6 +24,7 @@ export type RiskLevel = "low" | "medium" | "high" | "critical";
 
 export type Profile = {
   id: string;
+  user_id: string;
   display_name: string | null;
   currency: string;
   timezone: string;

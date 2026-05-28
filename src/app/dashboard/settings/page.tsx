@@ -1,10 +1,9 @@
-import { ModulePlaceholderPage } from "@/components/modules/module-placeholder-page";
+import { SettingsPanel } from "@/features/settings/components/settings-panel";
 
 export const metadata = {
   title: "Configurações",
 };
 
 export default function SettingsPage() {
-  return <ModulePlaceholderPage moduleKey="settings" />;
+  return <SettingsPanel />;
 }
-

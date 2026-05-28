@@ -55,9 +55,7 @@ Implemented in the foundation phase:
 - Responsive dashboard shell
 - Sidebar navigation
 - Top header
-- Placeholder routes for all planned MVP modules
 - Reusable base UI components
-- Isolated static mock data in `src/lib/mock-data.ts`
 - Supabase client utilities
 - Supabase Auth login and signup UI
 - Protected dashboard routes
@@ -81,12 +79,14 @@ Implemented in the foundation phase:
 - Decision-focused dashboard sections for pay now, can wait, next invoice pressure and monthly risk
 - Monthly cash-flow view with real income separated from reimbursements and third-party money
 - Reimbursement visibility by responsible person and linked source
+- CRUD for planned purchases and wishes
+- CRUD for notes
+- Functional user settings backed by `profiles`
 
 Not implemented yet:
 
 - Inline editing of preview rows
 - Automatic creation of missing references during import
-- AI-assisted classification
 - Final UX polish and final beta validation pass
 
 ## Development Setup
@@ -298,6 +298,9 @@ The first real CRUD set is implemented under authenticated dashboard routes:
 - `/dashboard/imports`
 - `/dashboard/goals`
 - `/dashboard/cash-flow`
+- `/dashboard/purchases`
+- `/dashboard/notes`
+- `/dashboard/settings`
 
 These pages persist data in Supabase and rely on RLS for user isolation. Inserts send the authenticated user's `user_id`, and reads/updates/deletes are still constrained by database policies.
 
@@ -314,6 +317,9 @@ Current tables used by the app:
 - `installments`
 - `payment_plans`
 - `payment_plan_items`
+- `planned_purchases`
+- `notes`
+- `profiles`
 - `import_batches`
 - `import_rows`
 
@@ -327,6 +333,8 @@ The dashboard now reads:
 - `installments`
 - `payment_plans`
 - `payment_plan_items`
+- `planned_purchases`
+- `notes`
 - `import_batches`
 
 Reimbursements and third-party money are displayed separately from real income. The projected balance can include them for cash-flow visibility, but the UI warns that they are not free income. Invoice transaction ownership distinguishes personal expenses from third-party, shared and family expenses.
@@ -345,7 +353,6 @@ The page includes a safe action to create roadmap goals for the authenticated us
 - Expandir importações
 - Melhorar prévia de importação
 - Revisar módulos Em breve
-- Preparar automações futuras
 
 These goals are not global seed data. They are inserted with the authenticated user's `user_id` and remain protected by RLS.
 
@@ -402,7 +409,6 @@ The simulator calculates:
 Known limitations:
 
 - Calculations are deterministic and rule-based only.
-- There are no AI recommendations.
 - Plan item links are stored directly where the schema supports them, but no automatic status synchronization is implemented yet.
 - Reimbursements and third-party money can help cash flow, but the UI treats them as linked money, not free income.
 
@@ -456,7 +462,7 @@ Known limitations:
 - Import confirmation uses partial success: valid rows can import while failed rows are marked with errors.
 - XLSX/CSV parsing runs in the browser using `xlsx`.
 - Credit card, invoice, transaction, reimbursement, installment, planned purchase and goal imports are intentionally disabled until their templates are stabilized.
-- No Open Finance, OCR, PDF parsing, card scraping or AI classification is implemented.
+- Open Finance, OCR, PDF parsing, card scraping, WhatsApp and AI classification are intentionally out of scope.
 
 ## Deployment
 
