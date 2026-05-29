@@ -26,6 +26,8 @@ import {
 import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { optionLabel, reimbursementStatusOptions } from "@/features/shared/options";
+import { PeriodFilter } from "@/features/shared/period-filter";
+import { createDefaultPeriodValue, isAnyDateInPeriod } from "@/features/shared/period";
 import type { FeedbackState } from "@/features/shared/types";
 import { createClient } from "@/lib/supabase/client";
 
@@ -42,17 +44,22 @@ export function ReimbursementsCrud() {
   const [personFilter, setPersonFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [linkedFilter, setLinkedFilter] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
+  const periodReimbursements = useMemo(() => {
+    return reimbursements.filter((reimbursement) =>
+      isAnyDateInPeriod([reimbursement.expected_date, reimbursement.received_date], period),
+    );
+  }, [period, reimbursements]);
+
   const filteredReimbursements = useMemo(() => {
     const needle = search.trim().toLowerCase();
 
-    return reimbursements.filter((reimbursement) => {
+    return periodReimbursements.filter((reimbursement) => {
       const personName = people.find((person) => person.id === reimbursement.person_id)?.name ?? "";
       const hasLink = Boolean(
         reimbursement.credit_card_transaction_id ||
@@ -68,29 +75,27 @@ export function ReimbursementsCrud() {
         (statusFilter === "all" || reimbursement.status === statusFilter) &&
         (linkedFilter === "all" ||
           (linkedFilter === "linked" && hasLink) ||
-          (linkedFilter === "manual" && !hasLink)) &&
-        (!dateFrom || (reimbursement.expected_date ?? "") >= dateFrom) &&
-        (!dateTo || (reimbursement.expected_date ?? "") <= dateTo)
+          (linkedFilter === "manual" && !hasLink))
       );
     });
-  }, [dateFrom, dateTo, linkedFilter, people, personFilter, reimbursements, search, statusFilter]);
+  }, [linkedFilter, people, periodReimbursements, personFilter, search, statusFilter]);
 
   const summary = useMemo(() => {
     const isOpen = (item: ReimbursementRow) => ["expected", "partial", "late"].includes(item.status);
-    const totalExpected = reimbursements
+    const totalExpected = periodReimbursements
       .filter(isOpen)
       .reduce((sum, item) => sum + Number(item.expected_amount), 0);
-    const totalReceived = reimbursements.reduce((sum, item) => sum + Number(item.received_amount), 0);
-    const lateAmount = reimbursements
+    const totalReceived = periodReimbursements.reduce((sum, item) => sum + Number(item.received_amount), 0);
+    const lateAmount = periodReimbursements
       .filter((item) => item.status === "late")
       .reduce((sum, item) => sum + Number(item.expected_amount) - Number(item.received_amount), 0);
-    const partialAmount = reimbursements
+    const partialAmount = periodReimbursements
       .filter((item) => item.status === "partial")
       .reduce((sum, item) => sum + Number(item.expected_amount) - Number(item.received_amount), 0);
-    const amountOwed = reimbursements
+    const amountOwed = periodReimbursements
       .filter(isOpen)
       .reduce((sum, item) => sum + Number(item.expected_amount) - Number(item.received_amount), 0);
-    const linkedGrossAmount = reimbursements.reduce((sum, item) => {
+    const linkedGrossAmount = periodReimbursements.reduce((sum, item) => {
       const transaction = transactions.find((transactionItem) => transactionItem.id === item.credit_card_transaction_id);
       const account = accounts.find((accountItem) => accountItem.id === item.account_payable_id);
 
@@ -99,12 +104,12 @@ export function ReimbursementsCrud() {
     const estimatedPersonalCost = Math.max(linkedGrossAmount - amountOwed, 0);
 
     return { totalExpected, totalReceived, lateAmount, partialAmount, amountOwed, estimatedPersonalCost };
-  }, [accounts, reimbursements, transactions]);
+  }, [accounts, periodReimbursements, transactions]);
 
   const peopleSummary = useMemo(() => {
     return people
       .map((person) => {
-        const personRows = reimbursements.filter((item) => item.person_id === person.id);
+        const personRows = periodReimbursements.filter((item) => item.person_id === person.id);
         const openRows = personRows.filter((item) => ["expected", "partial", "late"].includes(item.status));
         const expected = openRows.reduce((sum, item) => sum + Number(item.expected_amount), 0);
         const received = personRows.reduce((sum, item) => sum + Number(item.received_amount), 0);
@@ -117,7 +122,7 @@ export function ReimbursementsCrud() {
       })
       .filter((item) => item.count > 0)
       .sort((a, b) => b.open - a.open);
-  }, [people, reimbursements]);
+  }, [people, periodReimbursements]);
 
   async function loadData() {
     setLoading(true);
@@ -193,6 +198,8 @@ export function ReimbursementsCrud() {
       />
       <CrudFeedback feedback={feedback} />
 
+      <PeriodFilter value={period} onChange={setPeriod} />
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <StatCard label="A receber" value={formatCurrency(summary.totalExpected)} helper="Não é renda livre." tone="warning" />
         <StatCard label="Recebido" value={formatCurrency(summary.totalReceived)} helper="Pix já recebido." tone="success" />
@@ -237,7 +244,7 @@ export function ReimbursementsCrud() {
       </SectionCard>
 
       <SectionCard title="Filtros">
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
           <input className={inputClassName} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por descrição ou pessoa" />
           <select className={inputClassName} value={personFilter} onChange={(event) => setPersonFilter(event.target.value)}>
             <option value="all">Todas pessoas</option>
@@ -252,8 +259,6 @@ export function ReimbursementsCrud() {
             <option value="linked">Com lançamento</option>
             <option value="manual">Manual</option>
           </select>
-          <input type="date" className={inputClassName} value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-          <input type="date" className={inputClassName} value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
         </div>
       </SectionCard>
 
@@ -262,6 +267,8 @@ export function ReimbursementsCrud() {
           <p className="text-sm text-ink-600">Carregando reembolsos...</p>
         ) : reimbursements.length === 0 ? (
           <EmptyState title="Nenhum reembolso cadastrado" description="Crie reembolsos para separar dinheiro de terceiros da sua renda real." />
+        ) : filteredReimbursements.length === 0 ? (
+          <EmptyState title="Nenhum reembolso no período" description="Ajuste o período ou os filtros para ver outros reembolsos." />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">

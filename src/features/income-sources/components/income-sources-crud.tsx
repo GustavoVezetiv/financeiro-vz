@@ -22,6 +22,8 @@ import {
   incomeTypeOptions,
   optionLabel,
 } from "@/features/shared/options";
+import { PeriodFilter } from "@/features/shared/period-filter";
+import { createDefaultPeriodValue, isAnyDateInPeriod } from "@/features/shared/period";
 import type { FeedbackState } from "@/features/shared/types";
 import {
   createIncomeSource,
@@ -55,18 +57,22 @@ export function IncomeSourcesCrud() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [confidenceFilter, setConfidenceFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
+  const periodIncome = useMemo(() => {
+    return incomeSources.filter((income) =>
+      isAnyDateInPeriod([income.expected_date, income.received_date], period),
+    );
+  }, [incomeSources, period]);
+
   const filteredIncome = useMemo(() => {
     const needle = search.trim().toLowerCase();
 
-    return incomeSources.filter((income) => {
-      const expectedDate = income.expected_date ?? "";
+    return periodIncome.filter((income) => {
       const matchesSearch =
         !needle ||
         income.name.toLowerCase().includes(needle) ||
@@ -75,32 +81,26 @@ export function IncomeSourcesCrud() {
       const matchesType = typeFilter === "all" || income.source_type === typeFilter;
       const matchesConfidence = confidenceFilter === "all" || income.confidence === confidenceFilter;
       const matchesCategory = categoryFilter === "all" || income.category_id === categoryFilter;
-      const matchesStart = !startDate || expectedDate >= startDate;
-      const matchesEnd = !endDate || expectedDate <= endDate;
 
       return (
         matchesSearch &&
         matchesStatus &&
         matchesType &&
         matchesConfidence &&
-        matchesCategory &&
-        matchesStart &&
-        matchesEnd
+        matchesCategory
       );
     });
   }, [
     categoryFilter,
     confidenceFilter,
-    endDate,
-    incomeSources,
+    periodIncome,
     search,
-    startDate,
     statusFilter,
     typeFilter,
   ]);
 
   const summary = useMemo(() => {
-    return incomeSources.reduce(
+    return periodIncome.reduce(
       (acc, income) => {
         const amount = Number(income.amount);
 
@@ -128,7 +128,7 @@ export function IncomeSourcesCrud() {
       },
       { expected: 0, received: 0, reimbursement: 0, thirdParty: 0, lowConfidence: 0 },
     );
-  }, [incomeSources]);
+  }, [periodIncome]);
 
   async function loadIncomeSources() {
     setLoading(true);
@@ -261,6 +261,8 @@ export function IncomeSourcesCrud() {
 
       <CrudFeedback feedback={feedback} />
 
+      <PeriodFilter value={period} onChange={setPeriod} />
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Previsto" value={formatCurrency(summary.expected)} helper="Entradas esperadas." tone="info" />
         <StatCard label="Recebido" value={formatCurrency(summary.received)} helper="Já recebido." tone="success" />
@@ -279,8 +281,8 @@ export function IncomeSourcesCrud() {
         </p>
       </SectionCard>
 
-      <SectionCard title="Filtros" description="Refine por status, tipo, confiança, data e categoria.">
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-7">
+      <SectionCard title="Filtros" description="Refine por status, tipo, confiança e categoria.">
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar" className={inputClassName} />
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className={inputClassName}>
             <option value="all">Todos status</option>
@@ -298,8 +300,6 @@ export function IncomeSourcesCrud() {
             <option value="all">Todas categorias</option>
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
           </select>
-          <input value={startDate} onChange={(event) => setStartDate(event.target.value)} type="date" className={inputClassName} />
-          <input value={endDate} onChange={(event) => setEndDate(event.target.value)} type="date" className={inputClassName} />
         </div>
       </SectionCard>
 
@@ -308,6 +308,8 @@ export function IncomeSourcesCrud() {
           <p className="text-sm text-ink-600">Carregando receitas...</p>
         ) : incomeSources.length === 0 ? (
           <EmptyState title="Nenhuma entrada cadastrada" description="Crie receitas e entradas previstas para projetar o mês." />
+        ) : filteredIncome.length === 0 ? (
+          <EmptyState title="Nenhuma entrada no período" description="Ajuste o período ou os filtros para ver outras receitas." />
         ) : (
           <IncomeTable
             incomeSources={filteredIncome}

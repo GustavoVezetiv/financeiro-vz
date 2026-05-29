@@ -10,6 +10,8 @@ import { StatCard } from "@/components/ui/stat-card";
 import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { invoiceStatusOptions, optionLabel } from "@/features/shared/options";
+import { PeriodFilter } from "@/features/shared/period-filter";
+import { createDefaultPeriodValue, isAnyDateInPeriod } from "@/features/shared/period";
 import type { FeedbackState } from "@/features/shared/types";
 import { createInvoice, deleteInvoice, listInvoiceCards, listInvoices, updateInvoice } from "@/features/invoices/queries";
 import { emptyInvoiceForm, invoiceToFormValues, type InvoiceCard, type InvoiceFormValues, type InvoiceRow } from "@/features/invoices/types";
@@ -29,14 +31,21 @@ export function InvoicesCrud() {
   const [search, setSearch] = useState("");
   const [cardFilter, setCardFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
+  const periodInvoices = useMemo(() => {
+    return invoices.filter((invoice) =>
+      isAnyDateInPeriod([invoice.due_date, invoice.reference_month], period),
+    );
+  }, [invoices, period]);
+
   const filteredInvoices = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return invoices.filter((invoice) => {
+    return periodInvoices.filter((invoice) => {
       const card = cards.find((item) => item.id === invoice.credit_card_id);
       return (
         (!needle || (card?.name ?? "").toLowerCase().includes(needle) || invoice.reference_month.includes(needle)) &&
@@ -44,16 +53,15 @@ export function InvoicesCrud() {
         (statusFilter === "all" || invoice.status === statusFilter)
       );
     });
-  }, [cardFilter, cards, invoices, search, statusFilter]);
+  }, [cardFilter, cards, periodInvoices, search, statusFilter]);
 
   const summary = useMemo(() => {
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    const openTotal = invoices.filter((i) => i.status === "open" || i.status === "closed").reduce((s, i) => s + Number(i.total_amount), 0);
-    const overdueTotal = invoices.filter((i) => i.status === "overdue").reduce((s, i) => s + Number(i.total_amount), 0);
-    const paidThisMonth = invoices.filter((i) => i.status === "paid" && i.due_date.startsWith(currentMonth)).reduce((s, i) => s + Number(i.paid_amount), 0);
-    const nextDue = invoices.filter((i) => i.status !== "paid" && i.status !== "cancelled").sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
+    const openTotal = periodInvoices.filter((i) => i.status === "open" || i.status === "closed").reduce((s, i) => s + Number(i.total_amount), 0);
+    const overdueTotal = periodInvoices.filter((i) => i.status === "overdue").reduce((s, i) => s + Number(i.total_amount), 0);
+    const paidThisMonth = periodInvoices.filter((i) => i.status === "paid").reduce((s, i) => s + Number(i.paid_amount), 0);
+    const nextDue = periodInvoices.filter((i) => i.status !== "paid" && i.status !== "cancelled").sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
     return { openTotal, overdueTotal, paidThisMonth, nextDue };
-  }, [invoices]);
+  }, [periodInvoices]);
 
   async function loadData() {
     setLoading(true);
@@ -158,10 +166,11 @@ export function InvoicesCrud() {
     <div className="space-y-6">
       <PageHeader eyebrow="Pressão mensal" title="Faturas" description="Controle faturas por cartão e mês." action={<ActionButton onClick={() => setModal({ mode: "create", invoice: null })}>Nova fatura</ActionButton>} />
       <CrudFeedback feedback={feedback} />
+      <PeriodFilter value={period} onChange={setPeriod} />
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Faturas abertas" value={formatCurrency(summary.openTotal)} helper="Abertas ou fechadas." tone="warning" />
         <StatCard label="Faturas atrasadas" value={formatCurrency(summary.overdueTotal)} helper="Maior risco." tone="danger" />
-        <StatCard label="Pago no mês" value={formatCurrency(summary.paidThisMonth)} helper="Faturas pagas no mês atual." tone="success" />
+        <StatCard label="Pago no período" value={formatCurrency(summary.paidThisMonth)} helper="Faturas pagas no período filtrado." tone="success" />
         <StatCard label="Próximo vencimento" value={summary.nextDue ? formatDate(summary.nextDue.due_date) : "-"} helper={summary.nextDue ? formatCurrency(Number(summary.nextDue.total_amount)) : "Sem fatura aberta."} tone="info" />
       </section>
       <SectionCard title="Filtros">
@@ -172,7 +181,7 @@ export function InvoicesCrud() {
         </div>
       </SectionCard>
       <SectionCard title="Faturas cadastradas">
-        {loading ? <p className="text-sm text-ink-600">Carregando faturas...</p> : invoices.length === 0 ? <EmptyState title="Nenhuma fatura cadastrada" description="Crie faturas para lançar compras e acompanhar o impacto mensal." /> : (
+        {loading ? <p className="text-sm text-ink-600">Carregando faturas...</p> : invoices.length === 0 ? <EmptyState title="Nenhuma fatura cadastrada" description="Crie faturas para lançar compras e acompanhar o impacto mensal." /> : filteredInvoices.length === 0 ? <EmptyState title="Nenhuma fatura no período" description="Ajuste o período ou os filtros para ver outras faturas." /> : (
           <div className="overflow-x-auto"><table className="min-w-full divide-y divide-ink-950/10 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600"><tr><th className="px-4 py-3">Cartão</th><th className="px-4 py-3">Mês</th><th className="px-4 py-3">Vencimento</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Pago</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Ações</th></tr></thead><tbody className="divide-y divide-ink-950/10">
             {filteredInvoices.map((invoice) => <tr key={invoice.id}><td className="px-4 py-3 font-medium text-ink-950">{cards.find((c) => c.id === invoice.credit_card_id)?.name ?? "-"}</td><td className="px-4 py-3 text-ink-600">{invoice.reference_month.slice(0, 7)}</td><td className="px-4 py-3 text-ink-600">{formatDate(invoice.due_date)}</td><td className="px-4 py-3 text-ink-950">{formatCurrency(Number(invoice.total_amount))}</td><td className="px-4 py-3 text-ink-600">{formatCurrency(Number(invoice.paid_amount))}</td><td className="px-4 py-3 text-ink-600">{optionLabel(invoiceStatusOptions, invoice.status)}</td><td className="px-4 py-3"><div className="flex justify-end gap-2"><Link className="rounded-md border border-ink-950/10 px-4 py-2.5 text-sm font-semibold text-ink-950 hover:border-mint-500 hover:text-mint-600" href={`/dashboard/invoices/${invoice.id}`}>Lançamentos</Link><ActionButton variant="secondary" onClick={() => setModal({ mode: "payment", invoice })}>Registrar pagamento</ActionButton><ActionButton variant="secondary" onClick={() => setModal({ mode: "edit", invoice })}>Editar</ActionButton><ActionButton variant="danger" onClick={() => void handleDelete(invoice)}>Excluir</ActionButton></div></td></tr>)}
           </tbody></table></div>

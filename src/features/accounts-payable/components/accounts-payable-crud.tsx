@@ -21,6 +21,8 @@ import {
   paymentMethodOptions,
   priorityOptions,
 } from "@/features/shared/options";
+import { PeriodFilter } from "@/features/shared/period-filter";
+import { createDefaultPeriodValue, isDateInPeriod } from "@/features/shared/period";
 import type { FeedbackState } from "@/features/shared/types";
 import {
   createAccountPayable,
@@ -53,17 +55,20 @@ export function AccountsPayableCrud() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
+  const periodAccounts = useMemo(() => {
+    return accounts.filter((account) => isDateInPeriod(account.due_date, period));
+  }, [accounts, period]);
+
   const filteredAccounts = useMemo(() => {
     const needle = search.trim().toLowerCase();
 
-    return accounts.filter((account) => {
+    return periodAccounts.filter((account) => {
       const matchesSearch =
         !needle ||
         account.title.toLowerCase().includes(needle) ||
@@ -71,19 +76,15 @@ export function AccountsPayableCrud() {
       const matchesStatus = statusFilter === "all" || account.status === statusFilter;
       const matchesPriority = priorityFilter === "all" || account.priority === priorityFilter;
       const matchesCategory = categoryFilter === "all" || account.category_id === categoryFilter;
-      const matchesStart = !startDate || account.due_date >= startDate;
-      const matchesEnd = !endDate || account.due_date <= endDate;
 
       return (
         matchesSearch &&
         matchesStatus &&
         matchesPriority &&
-        matchesCategory &&
-        matchesStart &&
-        matchesEnd
+        matchesCategory
       );
     });
-  }, [accounts, categoryFilter, endDate, priorityFilter, search, startDate, statusFilter]);
+  }, [categoryFilter, periodAccounts, priorityFilter, search, statusFilter]);
 
   const summary = useMemo(() => {
     const today = todayISO();
@@ -91,7 +92,7 @@ export function AccountsPayableCrud() {
     nextWeek.setDate(nextWeek.getDate() + 7);
     const nextWeekISO = nextWeek.toISOString().slice(0, 10);
 
-    return accounts.reduce(
+    return periodAccounts.reduce(
       (acc, account) => {
         const amount = Number(account.amount);
 
@@ -115,7 +116,7 @@ export function AccountsPayableCrud() {
       },
       { pending: 0, overdue: 0, highPriority: 0, nextSevenDays: 0 },
     );
-  }, [accounts]);
+  }, [periodAccounts]);
 
   async function loadAccounts() {
     setLoading(true);
@@ -248,6 +249,8 @@ export function AccountsPayableCrud() {
 
       <CrudFeedback feedback={feedback} />
 
+      <PeriodFilter value={period} onChange={setPeriod} />
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Pendente" value={formatCurrency(summary.pending)} helper="Contas ainda abertas." tone="warning" />
         <StatCard label="Atrasado" value={formatCurrency(summary.overdue)} helper="Obrigações em atraso." tone="danger" />
@@ -255,8 +258,8 @@ export function AccountsPayableCrud() {
         <StatCard label="Próximos 7 dias" value={formatCurrency(summary.nextSevenDays)} helper="Vence em breve." tone="info" />
       </section>
 
-      <SectionCard title="Filtros" description="Refine por status, prioridade, vencimento e categoria.">
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <SectionCard title="Filtros" description="Refine por status, prioridade e categoria.">
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar" className={inputClassName} />
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className={inputClassName}>
             <option value="all">Todos status</option>
@@ -270,8 +273,6 @@ export function AccountsPayableCrud() {
             <option value="all">Todas categorias</option>
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
           </select>
-          <input value={startDate} onChange={(event) => setStartDate(event.target.value)} type="date" className={inputClassName} />
-          <input value={endDate} onChange={(event) => setEndDate(event.target.value)} type="date" className={inputClassName} />
         </div>
       </SectionCard>
 
@@ -280,6 +281,8 @@ export function AccountsPayableCrud() {
           <p className="text-sm text-ink-600">Carregando contas...</p>
         ) : accounts.length === 0 ? (
           <EmptyState title="Nenhuma conta cadastrada" description="Crie contas para começar a planejar o mês." />
+        ) : filteredAccounts.length === 0 ? (
+          <EmptyState title="Nenhuma conta no período" description="Ajuste o período ou os filtros para ver outras contas." />
         ) : (
           <AccountsTable
             accounts={filteredAccounts}

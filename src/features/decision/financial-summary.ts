@@ -8,6 +8,7 @@ import type {
   PaymentPlanItem,
   Reimbursement,
 } from "@/lib/supabase/types";
+import type { PeriodValue } from "@/features/shared/period";
 
 export type FinancialDataset = {
   accounts: AccountPayable[];
@@ -74,8 +75,8 @@ const openAccountStatuses = new Set(["pending", "overdue"]);
 const openInvoiceStatuses = new Set(["open", "closed", "partial", "overdue"]);
 const openReimbursementStatuses = new Set(["expected", "partial", "late"]);
 
-export function buildFinancialSummary(data: FinancialDataset, now = new Date()): FinancialSummary {
-  const boundaries = getMonthBoundaries(now);
+export function buildFinancialSummary(data: FinancialDataset, period?: PeriodValue, now = new Date()): FinancialSummary {
+  const boundaries = getMonthBoundaries(now, period);
   const activeAccounts = data.accounts.filter((account) => openAccountStatuses.has(account.status));
   const currentAccounts = activeAccounts.filter((account) =>
     isWithin(account.due_date, boundaries.monthStart, boundaries.monthEnd),
@@ -109,6 +110,11 @@ export function buildFinancialSummary(data: FinancialDataset, now = new Date()):
   const openReimbursements = data.reimbursements.filter((item) =>
     openReimbursementStatuses.has(item.status),
   );
+  const currentReimbursements = openReimbursements.filter(
+    (item) =>
+      isWithin(item.expected_date, boundaries.monthStart, boundaries.monthEnd) ||
+      isWithin(item.received_date, boundaries.monthStart, boundaries.monthEnd),
+  );
 
   const realIncomeExpected = sum(
     currentIncome.filter((income) => income.inflow_kind === "real_income"),
@@ -133,7 +139,7 @@ export function buildFinancialSummary(data: FinancialDataset, now = new Date()):
     invoiceOpenAmount,
   );
   const activeInstallmentsMonthly = sum(currentInstallments, (installment) => installment.installment_amount);
-  const openReimbursementAmount = sum(openReimbursements, reimbursementOpenAmount);
+  const openReimbursementAmount = sum(currentReimbursements, reimbursementOpenAmount);
   const reimbursableTransactionAmount = sum(
     data.transactions.filter(
       (transaction) =>
@@ -186,7 +192,7 @@ export function buildFinancialSummary(data: FinancialDataset, now = new Date()):
     canWaitItems: buildCanWaitItems(currentAccounts),
     nextInvoiceItems: buildNextInvoiceItems(currentInvoices, currentInstallments),
     highRiskItems: buildHighRiskItems(currentAccounts, currentInvoices),
-    flowRows: buildFlowRows(currentAccounts, currentIncome, currentInvoices, currentInstallments, openReimbursements),
+    flowRows: buildFlowRows(currentAccounts, currentIncome, currentInvoices, currentInstallments, currentReimbursements),
   };
 }
 
@@ -363,12 +369,34 @@ function buildFlowRows(
   return rows.filter((row) => row.date).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function getMonthBoundaries(now: Date) {
+function getMonthBoundaries(now: Date, period?: PeriodValue) {
   const year = now.getFullYear();
   const month = now.getMonth();
   const nextMonth = new Date(year, month + 1, 1);
   const nextMonthYear = nextMonth.getFullYear();
   const nextMonthIndex = nextMonth.getMonth();
+
+  if (period && period.preset !== "all") {
+    const nextPeriodStart = addDays(parseISODate(period.endDate), 1);
+    const nextPeriodEnd = addMonths(nextPeriodStart, 1);
+    nextPeriodEnd.setDate(nextPeriodEnd.getDate() - 1);
+
+    return {
+      monthStart: period.startDate,
+      monthEnd: period.endDate,
+      nextMonthStart: toISODate(nextPeriodStart),
+      nextMonthEnd: toISODate(nextPeriodEnd),
+    };
+  }
+
+  if (period?.preset === "all") {
+    return {
+      monthStart: "0001-01-01",
+      monthEnd: "9999-12-31",
+      nextMonthStart: toISODate(new Date(nextMonthYear, nextMonthIndex, 1)),
+      nextMonthEnd: toISODate(new Date(nextMonthYear, nextMonthIndex + 1, 0)),
+    };
+  }
 
   return {
     monthStart: toISODate(new Date(year, month, 1)),
@@ -389,11 +417,31 @@ function sum<T>(items: T[], selector: (item: T) => number) {
 }
 
 function toISODate(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function normalizeDate(date: string | null) {
   if (!date) return null;
   if (/^\d{4}-\d{2}$/.test(date)) return `${date}-01`;
   return date;
+}
+
+function parseISODate(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function addDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function addMonths(date: Date, months: number) {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
 }

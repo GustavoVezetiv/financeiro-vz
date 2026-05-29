@@ -11,6 +11,8 @@ import { decisionStatusOptions, emptyPlannedPurchaseForm, plannedPurchaseToFormV
 import { ActionButton, CategoryBadge, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { optionLabel, paymentMethodOptions, priorityOptions } from "@/features/shared/options";
+import { PeriodFilter } from "@/features/shared/period-filter";
+import { createDefaultPeriodValue, isDateInPeriod } from "@/features/shared/period";
 import type { FeedbackState } from "@/features/shared/types";
 import { createClient } from "@/lib/supabase/client";
 
@@ -25,6 +27,7 @@ export function PlannedPurchasesCrud() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [riskFilter, setRiskFilter] = useState("all");
+  const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
@@ -57,18 +60,22 @@ export function PlannedPurchasesCrud() {
     void loadData();
   }, [loadData]);
 
+  const periodItems = useMemo(() => {
+    return items.filter((item) => isDateInPeriod(item.target_date, period));
+  }, [items, period]);
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return items.filter((item) => {
+    return periodItems.filter((item) => {
       const matchesSearch = !term || [item.title, item.description, item.notes].some((value) => value?.toLowerCase().includes(term));
       const matchesStatus = statusFilter === "all" || item.decision_status === statusFilter;
       const matchesRisk = riskFilter === "all" || item.risk_level === riskFilter;
       return matchesSearch && matchesStatus && matchesRisk;
     });
-  }, [items, riskFilter, search, statusFilter]);
+  }, [periodItems, riskFilter, search, statusFilter]);
 
   const summary = useMemo(() => {
-    const active = items.filter((item) => !["purchased", "canceled"].includes(item.decision_status));
+    const active = periodItems.filter((item) => !["purchased", "canceled"].includes(item.decision_status));
     const highRisk = active.filter((item) => ["high", "critical"].includes(item.risk_level));
     const approved = active.filter((item) => item.decision_status === "approved");
     return {
@@ -77,7 +84,7 @@ export function PlannedPurchasesCrud() {
       approvedTotal: approved.reduce((sum, item) => sum + Number(item.estimated_amount), 0),
       count: active.length,
     };
-  }, [items]);
+  }, [periodItems]);
 
   async function handleSubmit(values: PlannedPurchaseFormValues) {
     if (!values.title.trim()) {
@@ -142,6 +149,7 @@ export function PlannedPurchasesCrud() {
         action={<ActionButton onClick={() => setModal({ mode: "create", item: null })}>Nova compra</ActionButton>}
       />
       <CrudFeedback feedback={feedback} />
+      <PeriodFilter value={period} onChange={setPeriod} description="Escolha o período de data alvo das compras planejadas." />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Em análise" value={formatCurrency(summary.totalActive)} helper={`${summary.count} itens ativos.`} tone="info" />
@@ -165,7 +173,7 @@ export function PlannedPurchasesCrud() {
         {loading ? (
           <p className="text-sm text-ink-600">Carregando compras...</p>
         ) : filtered.length === 0 ? (
-          <EmptyState title="Nenhuma compra planejada" description="Cadastre desejos e compras futuras para enxergar impacto antes da decisão." />
+          <EmptyState title="Nenhuma compra no período" description="Ajuste o período ou os filtros para ver outras compras planejadas." />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">

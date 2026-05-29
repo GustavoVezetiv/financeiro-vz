@@ -26,6 +26,8 @@ import {
 import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { installmentStatusOptions, optionLabel } from "@/features/shared/options";
+import { PeriodFilter } from "@/features/shared/period-filter";
+import { createDefaultPeriodValue, isDateRangeInPeriod } from "@/features/shared/period";
 import type { FeedbackState } from "@/features/shared/types";
 import { createClient } from "@/lib/supabase/client";
 
@@ -41,23 +43,30 @@ export function InstallmentsCrud() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [cardFilter, setCardFilter] = useState("all");
+  const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
+  const periodInstallments = useMemo(() => {
+    return installments.filter((item) =>
+      isDateRangeInPeriod(item.start_date ?? item.due_month, item.end_date ?? item.due_month, period),
+    );
+  }, [installments, period]);
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return installments.filter(
+    return periodInstallments.filter(
       (item) =>
         (!needle || item.description.toLowerCase().includes(needle)) &&
         (statusFilter === "all" || item.status === statusFilter) &&
         (cardFilter === "all" || item.credit_card_id === cardFilter),
     );
-  }, [cardFilter, installments, search, statusFilter]);
+  }, [cardFilter, periodInstallments, search, statusFilter]);
 
   const summary = useMemo(() => {
-    const active = installments.filter((item) => item.status === "active");
+    const active = periodInstallments.filter((item) => item.status === "active");
     const monthlyAmount = active.reduce((sum, item) => sum + Number(item.installment_amount), 0);
     const activeTotal = active.reduce((sum, item) => sum + Number(item.total_amount), 0);
     const finishingSoon = active.filter((item) => {
@@ -71,7 +80,7 @@ export function InstallmentsCrud() {
       return sum + Math.max(total - current + 1, 0) * Number(item.installment_amount);
     }, 0);
     return { activeTotal, monthlyAmount, finishingSoon, futureCommitment };
-  }, [installments]);
+  }, [periodInstallments]);
 
   async function loadData() {
     setLoading(true);
@@ -166,6 +175,7 @@ export function InstallmentsCrud() {
         action={<ActionButton onClick={() => setModal({ mode: "create", installment: null })}>Novo parcelamento</ActionButton>}
       />
       <CrudFeedback feedback={feedback} />
+      <PeriodFilter value={period} onChange={setPeriod} description="Escolha o período de impacto dos parcelamentos." />
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Parcelamentos ativos" value={formatCurrency(summary.activeTotal)} helper="Valor total original dos ativos." tone="info" />
         <StatCard label="Impacto mensal" value={formatCurrency(summary.monthlyAmount)} helper="Pressão recorrente mensal." tone="warning" />
@@ -190,6 +200,8 @@ export function InstallmentsCrud() {
           <p className="text-sm text-ink-600">Carregando parcelamentos...</p>
         ) : installments.length === 0 ? (
           <EmptyState title="Nenhum parcelamento" description="Cadastre parcelamentos para enxergar o impacto futuro antes de assumir novas decisões." />
+        ) : filtered.length === 0 ? (
+          <EmptyState title="Nenhum parcelamento no período" description="Ajuste o período ou os filtros para ver outros parcelamentos." />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
