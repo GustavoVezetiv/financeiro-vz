@@ -6,6 +6,17 @@ export type InstallmentInvoice = Pick<CreditCardInvoice, "id" | "reference_month
 export type InstallmentCategory = Pick<Category, "id" | "name">;
 export type InstallmentPerson = Pick<Person, "id" | "name">;
 
+export const installmentOriginOptions = [
+  { value: "card", label: "Cartão" },
+  { value: "invoice", label: "Fatura" },
+  { value: "bank_slip", label: "Boleto" },
+  { value: "financing", label: "Financiamento" },
+  { value: "informal_debt", label: "Dívida informal" },
+  { value: "other", label: "Outro" },
+] as const;
+
+export type InstallmentOrigin = (typeof installmentOriginOptions)[number]["value"];
+
 export type InstallmentFormValues = {
   description: string;
   total_amount: string;
@@ -18,6 +29,7 @@ export type InstallmentFormValues = {
   invoice_id: string;
   category_id: string;
   person_id: string;
+  installment_origin: InstallmentOrigin;
   status: string;
   notes: string;
 };
@@ -34,6 +46,7 @@ export const emptyInstallmentForm: InstallmentFormValues = {
   invoice_id: "",
   category_id: "",
   person_id: "",
+  installment_origin: "other",
   status: "active",
   notes: "",
 };
@@ -51,7 +64,14 @@ export function installmentToFormValues(item: InstallmentRow): InstallmentFormVa
     invoice_id: item.invoice_id ?? "",
     category_id: item.category_id ?? "",
     person_id: item.person_id ?? "",
+    installment_origin: (item.installment_origin as InstallmentOrigin | null) ?? inferInstallmentOrigin(item),
     status: item.status,
     notes: item.notes ?? "",
   };
+}
+
+function inferInstallmentOrigin(item: InstallmentRow): InstallmentOrigin {
+  if (item.invoice_id) return "invoice";
+  if (item.credit_card_id) return "card";
+  return "other";
 }

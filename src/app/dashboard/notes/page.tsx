@@ -1,7 +1,7 @@
 import { NotesCrud } from "@/features/notes/components/notes-crud";
 
 export const metadata = {
-  title: "Notas",
+  title: "Anotações",
 };
 
 export default function NotesPage() {

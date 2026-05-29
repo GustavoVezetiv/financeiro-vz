@@ -72,6 +72,11 @@ export type AccountPayable = UserOwnedRow & {
   risk_level: RiskLevel;
   is_recurring: boolean;
   recurrence_rule: Json | null;
+  recurrence_frequency: string | null;
+  recurrence_start_date: string | null;
+  recurrence_end_date: string | null;
+  recurrence_parent_id: string | null;
+  recurrence_generated_until: string | null;
   paid_at: string | null;
   payment_method_planned: string;
   can_delay: boolean;
@@ -181,6 +186,7 @@ export type Installment = UserOwnedRow & {
   due_month: string;
   start_date: string | null;
   end_date: string | null;
+  installment_origin: string;
   status: string;
   notes: string | null;
 };
@@ -243,6 +249,7 @@ export type Goal = UserOwnedRow & {
   target_date: string | null;
   monthly_contribution: number;
   status: string;
+  notes: string | null;
 };
 
 export type Note = UserOwnedRow & {

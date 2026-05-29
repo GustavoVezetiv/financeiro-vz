@@ -1,6 +1,6 @@
-# Financeiro VZ
+# Hub VZ
 
-Financeiro VZ is a personal finance decision dashboard focused on monthly payment planning, credit card invoices, reimbursements, third-party expenses, cash flow risk, and practical financial decisions.
+Hub VZ is a private personal hub for finances, goals, decisions, purchases, notes and planning. The financial module is the main module and focuses on monthly payment planning, credit card invoices, reimbursements, third-party expenses, cash flow risk, and practical financial decisions.
 
 This is not intended to be a generic expense tracker. The product exists to help answer operational questions such as:
 
@@ -16,7 +16,7 @@ This is not intended to be a generic expense tracker. The product exists to help
 
 The system is designed for a real personal finance workflow where the user frequently pays expenses with credit cards to generate cashback. Some expenses are personal. Others are paid on behalf of friends or the user's mother and are later reimbursed via Pix.
 
-Those reimbursements are not free income. They must be linked to the original expense, invoice, card transaction, and responsible person. Financeiro VZ treats reimbursements as first-class financial entities so the user can clearly distinguish:
+Those reimbursements are not free income. They must be linked to the original expense, invoice, card transaction, and responsible person. Hub VZ treats reimbursements as first-class financial entities so the user can clearly distinguish:
 
 - Personal income
 - Reimbursement inflows
@@ -75,7 +75,7 @@ Implemented in the foundation phase:
 - CSV template downloads for the MVP import targets
 - CSV/XLSX import preview, validation, skip and confirmation flow for people, categories, accounts payable and income sources
 - Dashboard summaries using real account, income, invoice, transaction, reimbursement, installment and payment plan data
-- User-owned roadmap goals in `/dashboard/goals`
+- User-owned personal goals in `/dashboard/goals`
 - Decision-focused dashboard sections for pay now, can wait, next invoice pressure and monthly risk
 - Monthly cash-flow view with real income separated from reimbursements and third-party money
 - Reimbursement visibility by responsible person and linked source
@@ -253,6 +253,15 @@ Run it after the import preview migration. It updates the `payment_plan_items.it
 check constraint so plan items can safely link to installments, reimbursements and
 income sources, matching the payment planner UI.
 
+The goals notes migration lives at:
+
+```bash
+supabase/migrations/202605290001_add_goal_notes.sql
+```
+
+Run it after the payment plan item type migration. It adds `goals.notes`, used by
+the personal goals CRUD.
+
 ## Authentication
 
 The `/login` route supports:
@@ -339,22 +348,22 @@ The dashboard now reads:
 
 Reimbursements and third-party money are displayed separately from real income. The projected balance can include them for cash-flow visibility, but the UI warns that they are not free income. Invoice transaction ownership distinguishes personal expenses from third-party, shared and family expenses.
 
-## Metas as Roadmap Organizer
+## Metas
 
-The `/dashboard/goals` route now uses the `goals` table as a user-owned product roadmap organizer.
+The `/dashboard/goals` route now uses the `goals` table as a user-owned personal goals module.
 
-The page includes a safe action to create roadmap goals for the authenticated user:
+The page includes CRUD for the authenticated user's goals using:
 
-- Consolidar dashboard decisório
-- Melhorar fluxo de caixa mensal
-- Fortalecer vínculo de reembolsos
-- Integrar pagamento com status
-- Amadurecer planos de pagamento
-- Expandir importações
-- Melhorar prévia de importação
-- Revisar módulos Em breve
+- `name`
+- `goal_type`
+- `target_amount`
+- `current_amount`
+- `target_date`
+- `monthly_contribution`
+- `status`
+- `notes`
 
-These goals are not global seed data. They are inserted with the authenticated user's `user_id` and remain protected by RLS.
+These goals are user-owned data and remain protected by RLS.
 
 ## Decision Dashboard and Cash Flow
 
@@ -466,7 +475,7 @@ Known limitations:
 
 ## Deployment
 
-Financeiro VZ is ready for a private beta deployment on Vercel after the Supabase project and migrations are configured.
+Hub VZ is ready for a private beta deployment on Vercel after the Supabase project and migrations are configured.
 
 Local development:
 
@@ -546,7 +555,7 @@ The next planned step is a later final pass:
 
 ## Development Philosophy
 
-Financeiro VZ should be built as a decision system before it becomes a reporting system.
+Hub VZ should be built as a decision system before it becomes a reporting system.
 
 The application should prioritize:
 

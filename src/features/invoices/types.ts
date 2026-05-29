@@ -18,7 +18,7 @@ export type InvoiceFormValues = {
 };
 
 export type InvoiceRow = CreditCardInvoice;
-export type InvoiceCard = Pick<CreditCard, "id" | "name" | "issuer">;
+export type InvoiceCard = Pick<CreditCard, "id" | "name" | "issuer" | "closing_day" | "due_day">;
 
 export type InvoiceTransactionRow = CreditCardTransaction;
 export type InvoiceReimbursementRow = Reimbursement;

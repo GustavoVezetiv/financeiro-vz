@@ -194,7 +194,7 @@ export default async function DashboardPage() {
           tone={summary.plannedPurchasePressure > 0 ? "warning" : "neutral"}
         />
         <StatCard
-          label="Notas fixadas"
+          label="Anotações fixadas"
           value={String(summary.pinnedNotesCount)}
           helper="Lembretes importantes para decisões."
           tone={summary.pinnedNotesCount > 0 ? "info" : "neutral"}
@@ -320,7 +320,7 @@ export default async function DashboardPage() {
         <SectionCard title="Compras e notas" description="Sinais leves para decisões futuras.">
           <p className="text-sm leading-6 text-ink-600">
             Há {summary.activePlannedPurchaseCount} compras planejadas ativas, somando
-            {" "}{formatCurrency(summary.plannedPurchasePressure)}. Notas fixadas: {summary.pinnedNotesCount}.
+            {" "}{formatCurrency(summary.plannedPurchasePressure)}. Anotações fixadas: {summary.pinnedNotesCount}.
           </p>
           {notes.length > 0 ? (
             <div className="mt-4 space-y-2">
@@ -503,7 +503,7 @@ function buildDashboardSummary(
 
   const estimatedNetPersonalCost = Math.max(openInvoiceTotal - openReimbursements, 0);
   const activeInstallmentMonthlyAmount = installments
-    .filter((item) => item.status === "active")
+    .filter((item) => item.status === "active" && !item.invoice_id)
     .reduce((total, item) => total + Number(item.installment_amount), 0);
 
   const activePlannedPurchases = plannedPurchases.filter((item) =>

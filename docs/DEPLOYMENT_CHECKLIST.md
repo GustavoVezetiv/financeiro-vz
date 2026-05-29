@@ -1,6 +1,6 @@
 # Deployment Checklist
 
-Financeiro VZ private beta deployment checklist for Vercel + Supabase.
+Hub VZ private beta deployment checklist for Vercel + Supabase.
 
 ## Before Deploy
 

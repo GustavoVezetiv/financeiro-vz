@@ -15,7 +15,7 @@ export type IncomeSourceFormValues = {
 };
 
 export type IncomeSourceRow = IncomeSource;
-export type IncomeCategory = Pick<Category, "id" | "name" | "type">;
+export type IncomeCategory = Pick<Category, "id" | "name" | "type" | "color" | "icon">;
 export type IncomePerson = Pick<Person, "id" | "name">;
 
 export const emptyIncomeForm: IncomeSourceFormValues = {
@@ -59,4 +59,3 @@ export function inflowKindFromType(type: string): FinancialInflowKind {
 
   return "real_income";
 }
-

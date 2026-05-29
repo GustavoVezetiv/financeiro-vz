@@ -15,6 +15,7 @@ import {
 } from "@/features/installments/queries";
 import {
   emptyInstallmentForm,
+  installmentOriginOptions,
   installmentToFormValues,
   type InstallmentCard,
   type InstallmentCategory,
@@ -23,9 +24,11 @@ import {
   type InstallmentPerson,
   type InstallmentRow,
 } from "@/features/installments/types";
-import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal } from "@/features/shared/crud-ui";
+import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { installmentStatusOptions, optionLabel } from "@/features/shared/options";
+import { PeriodFilter } from "@/features/shared/period-filter";
+import { createDefaultPeriodValue, isDateRangeInPeriod } from "@/features/shared/period";
 import type { FeedbackState } from "@/features/shared/types";
 import { createClient } from "@/lib/supabase/client";
 
@@ -41,24 +44,33 @@ export function InstallmentsCrud() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [cardFilter, setCardFilter] = useState("all");
+  const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
+  const periodInstallments = useMemo(() => {
+    return installments.filter((item) =>
+      isDateRangeInPeriod(item.start_date ?? item.due_month, item.end_date ?? item.due_month, period),
+    );
+  }, [installments, period]);
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return installments.filter(
+    return periodInstallments.filter(
       (item) =>
         (!needle || item.description.toLowerCase().includes(needle)) &&
         (statusFilter === "all" || item.status === statusFilter) &&
         (cardFilter === "all" || item.credit_card_id === cardFilter),
     );
-  }, [cardFilter, installments, search, statusFilter]);
+  }, [cardFilter, periodInstallments, search, statusFilter]);
 
   const summary = useMemo(() => {
-    const active = installments.filter((item) => item.status === "active");
-    const monthlyAmount = active.reduce((sum, item) => sum + Number(item.installment_amount), 0);
+    const active = periodInstallments.filter((item) => item.status === "active");
+    const monthlyAmount = active
+      .filter((item) => !item.invoice_id)
+      .reduce((sum, item) => sum + Number(item.installment_amount), 0);
     const activeTotal = active.reduce((sum, item) => sum + Number(item.total_amount), 0);
     const finishingSoon = active.filter((item) => {
       const current = Number(item.current_installment ?? item.installment_number);
@@ -71,7 +83,7 @@ export function InstallmentsCrud() {
       return sum + Math.max(total - current + 1, 0) * Number(item.installment_amount);
     }, 0);
     return { activeTotal, monthlyAmount, finishingSoon, futureCommitment };
-  }, [installments]);
+  }, [periodInstallments]);
 
   async function loadData() {
     setLoading(true);
@@ -162,13 +174,14 @@ export function InstallmentsCrud() {
       <PageHeader
         eyebrow="Compromissos futuros"
         title="Parcelamentos"
-        description="Acompanhe compras parceladas e impactos nas próximas faturas e no fluxo futuro."
+        description="Parcelamentos representam compromissos futuros divididos em parcelas. Eles podem estar ligados a um cartão, fatura ou existir fora do cartão, como financiamento, boleto parcelado ou dívida informal."
         action={<ActionButton onClick={() => setModal({ mode: "create", installment: null })}>Novo parcelamento</ActionButton>}
       />
       <CrudFeedback feedback={feedback} />
+      <PeriodFilter value={period} onChange={setPeriod} description="Escolha o período de impacto dos parcelamentos." />
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Parcelamentos ativos" value={formatCurrency(summary.activeTotal)} helper="Valor total original dos ativos." tone="info" />
-        <StatCard label="Impacto mensal" value={formatCurrency(summary.monthlyAmount)} helper="Pressão recorrente mensal." tone="warning" />
+        <StatCard label="Impacto mensal" value={formatCurrency(summary.monthlyAmount)} helper="Parcelas ativas fora de faturas." tone="warning" />
         <StatCard label="Terminando em breve" value={String(summary.finishingSoon)} helper="Faltam até 2 parcelas." tone="success" />
         <StatCard label="Compromisso futuro" value={formatCurrency(summary.futureCommitment)} helper="Valor ainda previsto nas próximas faturas." tone="danger" />
       </section>
@@ -190,15 +203,19 @@ export function InstallmentsCrud() {
           <p className="text-sm text-ink-600">Carregando parcelamentos...</p>
         ) : installments.length === 0 ? (
           <EmptyState title="Nenhum parcelamento" description="Cadastre parcelamentos para enxergar o impacto futuro antes de assumir novas decisões." />
+        ) : filtered.length === 0 ? (
+          <EmptyState title="Nenhum parcelamento no período" description="Ajuste o período ou os filtros para ver outros parcelamentos." />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600">
                 <tr>
                   <th className="px-4 py-3">Descrição</th>
-                  <th className="px-4 py-3">Cartão</th>
-                  <th className="px-4 py-3">Parcela</th>
                   <th className="px-4 py-3">Valor mensal</th>
+                  <th className="px-4 py-3">Parcela</th>
+                  <th className="px-4 py-3">Origem</th>
+                  <th className="px-4 py-3">Vínculo</th>
+                  <th className="px-4 py-3">Início</th>
                   <th className="px-4 py-3">Fim</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Ações</th>
@@ -207,10 +224,23 @@ export function InstallmentsCrud() {
               <tbody className="divide-y divide-ink-950/10">
                 {filtered.map((item) => (
                   <tr key={item.id}>
-                    <td className="px-4 py-3 font-medium text-ink-950">{item.description}</td>
-                    <td className="px-4 py-3 text-ink-600">{cards.find((card) => card.id === item.credit_card_id)?.name ?? "-"}</td>
-                    <td className="px-4 py-3 text-ink-600">{item.current_installment ?? item.installment_number}/{item.installment_total ?? item.installment_count}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-ink-950">{item.description}</p>
+                      {item.invoice_id ? (
+                        <p className="mt-1 max-w-72 text-xs leading-5 text-amberRisk-500">
+                          Este parcelamento está vinculado a uma fatura. Verifique se o valor já está sendo contado na fatura.
+                        </p>
+                      ) : null}
+                    </td>
                     <td className="px-4 py-3 text-ink-950">{formatCurrency(Number(item.installment_amount))}</td>
+                    <td className="px-4 py-3 text-ink-600">{item.current_installment ?? item.installment_number}/{item.installment_total ?? item.installment_count}</td>
+                    <td className="px-4 py-3">
+                      <TextBadge tone={item.invoice_id || item.credit_card_id ? "info" : "neutral"}>
+                        {getInstallmentOriginLabel(item)}
+                      </TextBadge>
+                    </td>
+                    <td className="px-4 py-3 text-ink-600">{getInstallmentLinkLabel(item, cards, invoices)}</td>
+                    <td className="px-4 py-3 text-ink-600">{formatDate(item.start_date ?? item.due_month)}</td>
                     <td className="px-4 py-3 text-ink-600">{formatDate(item.end_date ?? item.due_month)}</td>
                     <td className="px-4 py-3 text-ink-600">{optionLabel(installmentStatusOptions, item.status)}</td>
                     <td className="px-4 py-3">
@@ -268,6 +298,9 @@ function InstallmentModal({
   return (
     <Modal title={modal?.mode === "edit" ? "Editar parcelamento" : "Novo parcelamento"} onClose={onClose}>
       <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); onSubmit(values); }}>
+        <div className="rounded-md border border-ink-950/10 bg-slate-50 p-4 text-sm leading-6 text-ink-700 md:col-span-2">
+          Use parcelamento para compromissos divididos em várias parcelas. Para uma compra comum na fatura, use lançamento de fatura. Para uma dívida ou financiamento fora do cartão, use parcelamento sem cartão.
+        </div>
         <div className="md:col-span-2"><FieldShell label="Descrição"><input required className={inputClassName} value={values.description} onChange={(event) => setValues({ ...values, description: event.target.value })} /></FieldShell></div>
         <FieldShell label="Valor total"><input min="0" step="0.01" type="number" className={inputClassName} value={values.total_amount} onChange={(event) => setValues({ ...values, total_amount: event.target.value })} /></FieldShell>
         <FieldShell label="Valor da parcela"><input min="0" step="0.01" type="number" className={inputClassName} value={values.installment_amount} onChange={(event) => setValues({ ...values, installment_amount: event.target.value })} /></FieldShell>
@@ -275,8 +308,18 @@ function InstallmentModal({
         <FieldShell label="Total de parcelas"><input min="1" type="number" className={inputClassName} value={values.installment_total} onChange={(event) => setValues({ ...values, installment_total: event.target.value })} /></FieldShell>
         <FieldShell label="Início"><input required type="date" className={inputClassName} value={values.start_date} onChange={(event) => setValues({ ...values, start_date: event.target.value })} /></FieldShell>
         <FieldShell label="Fim"><input type="date" className={inputClassName} value={values.end_date} onChange={(event) => setValues({ ...values, end_date: event.target.value })} /></FieldShell>
-        <FieldShell label="Cartão"><select className={inputClassName} value={values.credit_card_id} onChange={(event) => setValues({ ...values, credit_card_id: event.target.value })}><option value="">Sem cartão</option>{cards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}</select></FieldShell>
-        <FieldShell label="Fatura"><select className={inputClassName} value={values.invoice_id} onChange={(event) => setValues({ ...values, invoice_id: event.target.value })}><option value="">Sem fatura</option>{invoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.reference_month.slice(0, 7)} - {formatDate(invoice.due_date)}</option>)}</select></FieldShell>
+        <FieldShell label="Origem">
+          <select className={inputClassName} value={values.installment_origin} onChange={(event) => setValues({ ...values, installment_origin: event.target.value as InstallmentFormValues["installment_origin"] })}>
+            {installmentOriginOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </FieldShell>
+        <FieldShell label="Cartão"><select className={inputClassName} value={values.credit_card_id} onChange={(event) => setValues({ ...values, credit_card_id: event.target.value, installment_origin: event.target.value ? "card" : values.installment_origin })}><option value="">Sem cartão</option>{cards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}</select></FieldShell>
+        <FieldShell label="Fatura"><select className={inputClassName} value={values.invoice_id} onChange={(event) => setValues({ ...values, invoice_id: event.target.value, installment_origin: event.target.value ? "invoice" : values.installment_origin })}><option value="">Sem fatura</option>{invoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.reference_month.slice(0, 7)} - {formatDate(invoice.due_date)}</option>)}</select></FieldShell>
+        {values.invoice_id ? (
+          <div className="rounded-md border border-amberRisk-500/20 bg-amberRisk-100 p-4 text-sm leading-6 text-ink-800 md:col-span-2">
+            Este parcelamento está vinculado a uma fatura. Verifique se o valor já está sendo contado na fatura.
+          </div>
+        ) : null}
         <FieldShell label="Categoria"><select className={inputClassName} value={values.category_id} onChange={(event) => setValues({ ...values, category_id: event.target.value })}><option value="">Sem categoria</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></FieldShell>
         <FieldShell label="Pessoa"><select className={inputClassName} value={values.person_id} onChange={(event) => setValues({ ...values, person_id: event.target.value })}><option value="">Sem pessoa</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></FieldShell>
         <FieldShell label="Status"><select className={inputClassName} value={values.status} onChange={(event) => setValues({ ...values, status: event.target.value })}>{installmentStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FieldShell>
@@ -285,4 +328,29 @@ function InstallmentModal({
       </form>
     </Modal>
   );
+}
+
+function getInstallmentOriginLabel(item: InstallmentRow) {
+  if (item.invoice_id) return "Fatura";
+  if (item.credit_card_id) return "Cartão";
+
+  return installmentOriginOptions.find((option) => option.value === item.installment_origin)?.label ?? "Outro";
+}
+
+function getInstallmentLinkLabel(
+  item: InstallmentRow,
+  cards: InstallmentCard[],
+  invoices: InstallmentInvoice[],
+) {
+  if (item.invoice_id) {
+    const invoice = invoices.find((invoiceItem) => invoiceItem.id === item.invoice_id);
+    return invoice ? `Fatura ${invoice.reference_month.slice(0, 7)}` : "Fatura vinculada";
+  }
+
+  if (item.credit_card_id) {
+    const card = cards.find((cardItem) => cardItem.id === item.credit_card_id);
+    return card?.name ?? "Cartão vinculado";
+  }
+
+  return "Fora do cartão";
 }

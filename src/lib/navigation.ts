@@ -19,6 +19,6 @@ export const navigationItems: NavigationItem[] = [
   { label: "Compras e desejos", href: "/dashboard/purchases" },
   { label: "Metas", href: "/dashboard/goals" },
   { label: "Importações", href: "/dashboard/imports" },
-  { label: "Notas", href: "/dashboard/notes" },
+  { label: "Anotações", href: "/dashboard/notes" },
   { label: "Configurações", href: "/dashboard/settings" },
 ];

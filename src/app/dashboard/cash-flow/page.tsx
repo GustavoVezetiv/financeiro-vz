@@ -4,13 +4,20 @@ import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import { buildFinancialSummary, type FlowRow } from "@/features/decision/financial-summary";
 import { formatCurrency, formatDate } from "@/features/shared/format";
+import { PeriodFilter } from "@/features/shared/period-filter";
+import { parsePeriodSearchParams } from "@/features/shared/period";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata = {
   title: "Fluxo de caixa",
 };
 
-export default async function CashFlowPage() {
+export default async function CashFlowPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const selectedPeriod = parsePeriodSearchParams((await searchParams) ?? {});
   const supabase = await createClient();
 
   if (!supabase) {
@@ -59,16 +66,19 @@ export default async function CashFlowPage() {
     return <CashFlowError message={error.message} />;
   }
 
-  const summary = buildFinancialSummary({
-    accounts: accountsResult.data ?? [],
-    incomeSources: incomeResult.data ?? [],
-    invoices: invoicesResult.data ?? [],
-    transactions: transactionsResult.data ?? [],
-    reimbursements: reimbursementsResult.data ?? [],
-    installments: installmentsResult.data ?? [],
-    activePlan,
-    activePlanItems: activePlanItemsResult.data ?? [],
-  });
+  const summary = buildFinancialSummary(
+    {
+      accounts: accountsResult.data ?? [],
+      incomeSources: incomeResult.data ?? [],
+      invoices: invoicesResult.data ?? [],
+      transactions: transactionsResult.data ?? [],
+      reimbursements: reimbursementsResult.data ?? [],
+      installments: installmentsResult.data ?? [],
+      activePlan,
+      activePlanItems: activePlanItemsResult.data ?? [],
+    },
+    selectedPeriod,
+  );
 
   const incomingRows = summary.flowRows.filter((row) => row.direction === "in");
   const outgoingRows = summary.flowRows.filter((row) => row.direction === "out");
@@ -78,14 +88,20 @@ export default async function CashFlowPage() {
       <PageHeader
         eyebrow="Projeção mensal"
         title="Fluxo de caixa"
-        description="Visão do mês separando renda real, dinheiro vinculado, obrigações e pressão futura."
+        description="Visão por período separando renda real, dinheiro vinculado, obrigações e pressão futura."
+      />
+
+      <PeriodFilter
+        value={selectedPeriod}
+        syncUrl
+        description="Escolha o período usado na projeção e nas tabelas de fluxo."
       />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Renda real prevista"
           value={formatCurrency(summary.realIncomeExpected)}
-          helper="Dinheiro livre esperado neste mês."
+          helper="Dinheiro livre esperado no período."
           tone="success"
         />
         <StatCard
@@ -109,7 +125,7 @@ export default async function CashFlowPage() {
         <StatCard
           label="Contas pendentes"
           value={formatCurrency(summary.pendingAccounts)}
-          helper="Obrigações abertas do mês."
+          helper="Obrigações abertas no período."
           tone="warning"
         />
         <StatCard
@@ -160,8 +176,8 @@ export default async function CashFlowPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <FlowTable title="Entradas do mês" rows={incomingRows} />
-        <FlowTable title="Saídas do mês" rows={outgoingRows} />
+        <FlowTable title="Entradas do período" rows={incomingRows} />
+        <FlowTable title="Saídas do período" rows={outgoingRows} />
       </section>
     </div>
   );
@@ -171,7 +187,7 @@ function FlowTable({ title, rows }: { title: string; rows: FlowRow[] }) {
   return (
     <SectionCard title={title}>
       {rows.length === 0 ? (
-        <EmptyState title="Nada previsto" description="Nenhum item deste tipo foi encontrado para o mês atual." />
+        <EmptyState title="Nada previsto" description="Nenhum item deste tipo foi encontrado para o período selecionado." />
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">

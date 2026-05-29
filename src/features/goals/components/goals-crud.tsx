@@ -1,0 +1,162 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { SectionCard } from "@/components/ui/section-card";
+import { StatCard } from "@/components/ui/stat-card";
+import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
+import { formatCurrency, formatDate } from "@/features/shared/format";
+import type { FeedbackState } from "@/features/shared/types";
+import { createGoal, deleteGoal, emptyGoalForm, goalToFormValues, listGoals, updateGoal, type GoalFormValues } from "@/features/goals/queries";
+import { createClient } from "@/lib/supabase/client";
+import type { Goal } from "@/lib/supabase/types";
+
+type ModalState = { mode: "create"; goal: null } | { mode: "edit"; goal: Goal } | null;
+
+const goalTypeOptions = [
+  { value: "emergency_reserve", label: "Reserva" },
+  { value: "debt_reduction", label: "Reduzir dívida" },
+  { value: "planned_purchase", label: "Compra planejada" },
+  { value: "savings", label: "Guardar dinheiro" },
+  { value: "other", label: "Outra" },
+];
+
+const goalStatusOptions = [
+  { value: "active", label: "Ativa" },
+  { value: "completed", label: "Concluída" },
+  { value: "paused", label: "Pausada" },
+  { value: "canceled", label: "Cancelada" },
+];
+
+export function GoalsCrud() {
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [modal, setModal] = useState<ModalState>(null);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
+
+  const summary = useMemo(() => {
+    const active = goals.filter((goal) => goal.status === "active");
+    return {
+      activeCount: active.length,
+      targetTotal: active.reduce((sum, goal) => sum + Number(goal.target_amount), 0),
+      currentTotal: active.reduce((sum, goal) => sum + Number(goal.current_amount), 0),
+      monthlyTotal: active.reduce((sum, goal) => sum + Number(goal.monthly_contribution), 0),
+    };
+  }, [goals]);
+
+  async function loadData() {
+    setLoading(true);
+    const client = createClient();
+    const { data: auth, error: authError } = await client.auth.getUser();
+    if (authError || !auth.user) {
+      setFeedback({ type: "error", message: "Sessão não encontrada. Entre novamente." });
+      setLoading(false);
+      return;
+    }
+    setUserId(auth.user.id);
+    const result = await listGoals(client);
+    if (result.error) {
+      console.error("Erro técnico ao carregar metas:", result.error);
+      setFeedback({ type: "error", message: "Não foi possível carregar as metas." });
+    } else {
+      setGoals(result.data ?? []);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  async function handleSubmit(values: GoalFormValues) {
+    if (!values.name.trim()) {
+      setFeedback({ type: "error", message: "Informe o nome da meta." });
+      return;
+    }
+    if ([values.target_amount, values.current_amount, values.monthly_contribution].some((value) => Number(value) < 0 || Number.isNaN(Number(value)))) {
+      setFeedback({ type: "error", message: "Valores devem ser maiores ou iguais a zero." });
+      return;
+    }
+    if (!userId) return;
+
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const client = createClient();
+      const result = modal?.mode === "edit" ? await updateGoal(client, modal.goal.id, values) : await createGoal(client, userId, values);
+      if (result.error) {
+        console.error("Erro técnico ao salvar meta:", result.error);
+        setFeedback({ type: "error", message: "Não foi possível salvar a meta." });
+        return;
+      }
+      setFeedback({ type: "success", message: modal?.mode === "edit" ? "Meta atualizada." : "Meta criada." });
+      setModal(null);
+      await loadData();
+    } catch (error) {
+      console.error("Erro técnico ao salvar meta:", error);
+      setFeedback({ type: "error", message: "Não foi possível salvar a meta." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(goal: Goal) {
+    if (!window.confirm(`Excluir ${goal.name}?`)) return;
+    const { error } = await deleteGoal(createClient(), goal.id);
+    if (error) {
+      console.error("Erro técnico ao excluir meta:", error);
+      setFeedback({ type: "error", message: "Não foi possível excluir a meta." });
+      return;
+    }
+    setFeedback({ type: "success", message: "Meta excluída." });
+    await loadData();
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader eyebrow="Planejamento pessoal" title="Metas" description="Acompanhe metas financeiras e pessoais sem misturar com tarefas internas do produto." action={<ActionButton onClick={() => setModal({ mode: "create", goal: null })}>Nova meta</ActionButton>} />
+      <CrudFeedback feedback={feedback} />
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Metas ativas" value={String(summary.activeCount)} helper="Em acompanhamento." tone="info" />
+        <StatCard label="Objetivo total" value={formatCurrency(summary.targetTotal)} helper="Soma das metas ativas." tone="warning" />
+        <StatCard label="Progresso atual" value={formatCurrency(summary.currentTotal)} helper="Valor já acumulado." tone="success" />
+        <StatCard label="Aporte mensal" value={formatCurrency(summary.monthlyTotal)} helper="Contribuição planejada." tone="neutral" />
+      </section>
+      <SectionCard title="Metas cadastradas">
+        {loading ? <p className="text-sm text-ink-600">Carregando metas...</p> : goals.length === 0 ? <EmptyState title="Nenhuma meta cadastrada" description="Crie metas pessoais para considerar nos planos do mês." /> : (
+          <div className="overflow-x-auto"><table className="min-w-full divide-y divide-ink-950/10 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600"><tr><th className="px-4 py-3">Meta</th><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Atual</th><th className="px-4 py-3">Objetivo</th><th className="px-4 py-3">Data</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Ações</th></tr></thead><tbody className="divide-y divide-ink-950/10">
+            {goals.map((goal) => <tr key={goal.id}><td className="px-4 py-3"><p className="font-medium text-ink-950">{goal.name}</p><p className="text-xs text-ink-600">{goal.notes ?? "Sem observações"}</p></td><td className="px-4 py-3 text-ink-600">{labelFor(goalTypeOptions, goal.goal_type)}</td><td className="px-4 py-3 text-ink-950">{formatCurrency(Number(goal.current_amount))}</td><td className="px-4 py-3 text-ink-950">{formatCurrency(Number(goal.target_amount))}</td><td className="px-4 py-3 text-ink-600">{formatDate(goal.target_date)}</td><td className="px-4 py-3"><TextBadge tone={goal.status === "completed" ? "success" : goal.status === "active" ? "info" : "neutral"}>{labelFor(goalStatusOptions, goal.status)}</TextBadge></td><td className="px-4 py-3"><div className="flex justify-end gap-2"><ActionButton variant="secondary" onClick={() => setModal({ mode: "edit", goal })}>Editar</ActionButton><ActionButton variant="danger" onClick={() => void handleDelete(goal)}>Excluir</ActionButton></div></td></tr>)}
+          </tbody></table></div>
+        )}
+      </SectionCard>
+      {modal ? <GoalModal modal={modal} saving={saving} onClose={() => setModal(null)} onSubmit={(values) => void handleSubmit(values)} /> : null}
+    </div>
+  );
+}
+
+function GoalModal({ modal, saving, onClose, onSubmit }: { modal: ModalState; saving: boolean; onClose: () => void; onSubmit: (values: GoalFormValues) => void }) {
+  const [values, setValues] = useState<GoalFormValues>(modal?.mode === "edit" ? goalToFormValues(modal.goal) : emptyGoalForm);
+  return (
+    <Modal title={modal?.mode === "edit" ? "Editar meta" : "Nova meta"} description="Meta é planejamento. Ela não cria pagamento automático nem altera seu caixa sozinha." onClose={onClose}>
+      <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); onSubmit(values); }}>
+        <FieldShell label="Nome"><input required className={inputClassName} value={values.name} onChange={(event) => setValues({ ...values, name: event.target.value })} /></FieldShell>
+        <FieldShell label="Tipo"><select className={inputClassName} value={values.goal_type} onChange={(event) => setValues({ ...values, goal_type: event.target.value })}>{goalTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FieldShell>
+        <FieldShell label="Valor objetivo"><input min="0" step="0.01" type="number" className={inputClassName} value={values.target_amount} onChange={(event) => setValues({ ...values, target_amount: event.target.value })} /></FieldShell>
+        <FieldShell label="Valor atual"><input min="0" step="0.01" type="number" className={inputClassName} value={values.current_amount} onChange={(event) => setValues({ ...values, current_amount: event.target.value })} /></FieldShell>
+        <FieldShell label="Data alvo"><input type="date" className={inputClassName} value={values.target_date} onChange={(event) => setValues({ ...values, target_date: event.target.value })} /></FieldShell>
+        <FieldShell label="Aporte mensal"><input min="0" step="0.01" type="number" className={inputClassName} value={values.monthly_contribution} onChange={(event) => setValues({ ...values, monthly_contribution: event.target.value })} /></FieldShell>
+        <FieldShell label="Status"><select className={inputClassName} value={values.status} onChange={(event) => setValues({ ...values, status: event.target.value })}>{goalStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FieldShell>
+        <div className="md:col-span-2"><FieldShell label="Observações"><textarea rows={3} className={inputClassName} value={values.notes} onChange={(event) => setValues({ ...values, notes: event.target.value })} /></FieldShell></div>
+        <div className="flex justify-end gap-2 md:col-span-2"><ActionButton type="button" variant="secondary" onClick={onClose}>Cancelar</ActionButton><ActionButton type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</ActionButton></div>
+      </form>
+    </Modal>
+  );
+}
+
+function labelFor(options: { value: string; label: string }[], value: string) {
+  return options.find((option) => option.value === value)?.label ?? value;
+}

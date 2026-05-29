@@ -101,19 +101,19 @@ export function NotesCrud() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Memória operacional"
-        title="Notas"
-        description="Registre decisões, combinados e observações financeiras sem transformar tudo em tarefa."
-        action={<ActionButton onClick={() => setModal({ mode: "create", item: null })}>Nova nota</ActionButton>}
+        title="Anotações"
+        description="Registre lembretes, decisões soltas e contexto que ainda não precisa virar conta, meta ou plano."
+        action={<ActionButton onClick={() => setModal({ mode: "create", item: null })}>Nova anotação</ActionButton>}
       />
       <CrudFeedback feedback={feedback} />
 
       <section className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Notas" value={String(notes.length)} helper="Registros do usuário." tone="info" />
+        <StatCard label="Anotações" value={String(notes.length)} helper="Registros do usuário." tone="info" />
         <StatCard label="Fixadas" value={String(notes.filter((note) => note.pinned).length)} helper="Aparecem primeiro." tone="warning" />
         <StatCard label="Recentes" value={String(notes.filter((note) => daysSince(note.updated_at) <= 7).length)} helper="Atualizadas nos últimos 7 dias." tone="success" />
       </section>
 
-      <SectionCard title="Lista de notas">
+      <SectionCard title="Lista de anotações" description="Use para lembrar decisões, hipóteses e pendências que ainda estão soltas.">
         <div className="mb-4 grid gap-3 md:grid-cols-2">
           <input value={search} onChange={(event) => setSearch(event.target.value)} className={inputClassName} placeholder="Buscar por título ou conteúdo" />
           <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className={inputClassName}>
@@ -122,9 +122,9 @@ export function NotesCrud() {
           </select>
         </div>
         {loading ? (
-          <p className="text-sm text-ink-600">Carregando notas...</p>
+          <p className="text-sm text-ink-600">Carregando anotações...</p>
         ) : filtered.length === 0 ? (
-          <EmptyState title="Nenhuma nota" description="Crie notas simples para registrar decisões, riscos e combinados financeiros." />
+          <EmptyState title="Nenhuma anotação" description="Crie anotações simples para registrar lembretes, decisões e combinados financeiros." />
         ) : (
           <div className="grid gap-3">
             {filtered.map((note) => (
@@ -159,12 +159,12 @@ function NoteModal({ modal, saving, onClose, onSubmit }: { modal: ModalState; sa
   const [values, setValues] = useState<NoteFormValues>(modal?.mode === "edit" ? noteToFormValues(modal.item) : emptyNoteForm);
 
   return (
-    <Modal title={modal?.mode === "edit" ? "Editar nota" : "Nova nota"} description="Mantenha a nota curta e ligada a uma decisão prática." onClose={onClose}>
+    <Modal title={modal?.mode === "edit" ? "Editar anotação" : "Nova anotação"} description="Mantenha a anotação curta e ligada a uma decisão, lembrete ou pendência prática." onClose={onClose}>
       <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); onSubmit(values); }}>
         <FieldShell label="Título"><input className={inputClassName} value={values.title} onChange={(event) => setValues({ ...values, title: event.target.value })} /></FieldShell>
         <FieldShell label="Contexto"><select className={inputClassName} value={values.entity_type} onChange={(event) => setValues({ ...values, entity_type: event.target.value })}>{noteEntityTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FieldShell>
         <FieldShell label="Conteúdo"><textarea required rows={7} className={inputClassName} value={values.body} onChange={(event) => setValues({ ...values, body: event.target.value })} /></FieldShell>
-        <label className="flex items-center gap-2 text-sm font-medium text-ink-800"><input type="checkbox" checked={values.pinned} onChange={(event) => setValues({ ...values, pinned: event.target.checked })} /> Fixar nota</label>
+        <label className="flex items-center gap-2 text-sm font-medium text-ink-800"><input type="checkbox" checked={values.pinned} onChange={(event) => setValues({ ...values, pinned: event.target.checked })} /> Fixar anotação</label>
         <div className="flex justify-end gap-2"><ActionButton type="button" variant="secondary" onClick={onClose}>Cancelar</ActionButton><ActionButton type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</ActionButton></div>
       </form>
     </Modal>

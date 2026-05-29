@@ -10,7 +10,7 @@ import type {
 export type TransactionRow = CreditCardTransaction;
 export type TransactionCard = Pick<CreditCard, "id" | "name">;
 export type TransactionInvoice = Pick<CreditCardInvoice, "id" | "credit_card_id" | "reference_month" | "due_date">;
-export type TransactionCategory = Pick<Category, "id" | "name" | "type">;
+export type TransactionCategory = Pick<Category, "id" | "name" | "type" | "color" | "icon">;
 export type TransactionPerson = Pick<Person, "id" | "name">;
 
 export type TransactionFormValues = {
@@ -22,6 +22,7 @@ export type TransactionFormValues = {
   category_id: string;
   person_id: string;
   ownership_type: OwnershipType;
+  is_installment_purchase: boolean;
   installment_number: string;
   installment_total: string;
   is_reimbursable: boolean;
@@ -39,6 +40,7 @@ export const emptyTransactionForm: TransactionFormValues = {
   category_id: "",
   person_id: "",
   ownership_type: "personal",
+  is_installment_purchase: false,
   installment_number: "",
   installment_total: "",
   is_reimbursable: false,
@@ -57,6 +59,7 @@ export function transactionToFormValues(transaction: TransactionRow): Transactio
     category_id: transaction.category_id ?? "",
     person_id: transaction.person_id ?? "",
     ownership_type: transaction.ownership_type,
+    is_installment_purchase: Boolean(transaction.installment_number && transaction.installment_total),
     installment_number: transaction.installment_number ? String(transaction.installment_number) : "",
     installment_total: transaction.installment_total ? String(transaction.installment_total) : "",
     is_reimbursable: transaction.is_reimbursable,

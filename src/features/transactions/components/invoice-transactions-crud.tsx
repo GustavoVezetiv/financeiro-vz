@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import { calculateInvoiceSummary, type InvoiceCard, type InvoiceReimbursementRow, type InvoiceRow } from "@/features/invoices/types";
-import { ActionButton, BooleanBadge, CrudFeedback, FieldShell, inputClassName, Modal } from "@/features/shared/crud-ui";
+import { ActionButton, BooleanBadge, CategoryBadge, CrudFeedback, FieldShell, inputClassName, Modal } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { optionLabel, ownershipTypeOptions } from "@/features/shared/options";
 import type { FeedbackState } from "@/features/shared/types";
@@ -67,7 +67,7 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
     const [invoiceResult, cardsResult, transactionsResult, reimbursementsResult, support] =
       await Promise.all([
         client.from("credit_card_invoices").select("*").eq("id", invoiceId).single(),
-        client.from("credit_cards").select("id,name,issuer").order("name", { ascending: true }),
+        client.from("credit_cards").select("id,name,issuer,closing_day,due_day").order("name", { ascending: true }),
         client
           .from("credit_card_transactions")
           .select("*")
@@ -104,6 +104,23 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
       setFeedback({ type: "error", message: "O valor deve ser maior ou igual a zero." });
       return;
     }
+    const requiresPerson = values.ownership_type !== "personal";
+    if (requiresPerson && !values.person_id) {
+      setFeedback({ type: "error", message: "Informe a pessoa responsável quando a despesa não for pessoal." });
+      return;
+    }
+    if (values.ownership_type === "personal" && (values.person_id || values.is_reimbursable)) {
+      setFeedback({ type: "error", message: "Despesa pessoal não precisa de pessoa responsável nem reembolso." });
+      return;
+    }
+    if (values.is_installment_purchase) {
+      const current = Number(values.installment_number);
+      const total = Number(values.installment_total);
+      if (!values.installment_number || !values.installment_total || current < 1 || total < 1 || current > total) {
+        setFeedback({ type: "error", message: "Informe parcela atual e total, com parcela atual menor ou igual ao total." });
+        return;
+      }
+    }
     if (values.is_reimbursable && !values.person_id) {
       setFeedback({ type: "error", message: "Informe a pessoa responsável pelo reembolso." });
       return;
@@ -111,15 +128,20 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
     if (!userId) return;
 
     setSaving(true);
-    const client = createClient();
-    const result =
-      modal?.mode === "edit"
-        ? await updateTransaction(client, modal.transaction.id, values)
-        : await createTransaction(client, userId, values);
+    setFeedback(null);
+    try {
+      const client = createClient();
+      const result =
+        modal?.mode === "edit"
+          ? await updateTransaction(client, modal.transaction.id, values)
+          : await createTransaction(client, userId, values);
 
-    if (result.error) {
-      setFeedback({ type: "error", message: result.error.message });
-    } else {
+      if (result.error) {
+        console.error("Erro técnico ao salvar lançamento:", result.error);
+        setFeedback({ type: "error", message: "Não foi possível salvar o lançamento." });
+        return;
+      }
+
       if (modal?.mode === "create" && values.create_reimbursement && values.is_reimbursable) {
         const reimbursementResult = await createExpectedReimbursementForTransaction(
           client,
@@ -128,8 +150,8 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
           values.reimbursement_expected_date,
         );
         if (reimbursementResult.error) {
-          setFeedback({ type: "error", message: reimbursementResult.error.message });
-          setSaving(false);
+          console.error("Erro técnico ao criar reembolso esperado:", reimbursementResult.error);
+          setFeedback({ type: "error", message: "Lançamento salvo, mas não foi possível criar o reembolso esperado." });
           return;
         }
       }
@@ -139,8 +161,12 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
       });
       setModal(null);
       await loadData();
+    } catch (error) {
+      console.error("Erro técnico ao salvar lançamento:", error);
+      setFeedback({ type: "error", message: "Não foi possível salvar o lançamento." });
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function handleDelete(transaction: TransactionRow) {
@@ -196,6 +222,7 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
                   <th className="px-4 py-3">Descrição</th>
                   <th className="px-4 py-3">Valor</th>
                   <th className="px-4 py-3">Tipo</th>
+                  <th className="px-4 py-3">Categoria</th>
                   <th className="px-4 py-3">Pessoa</th>
                   <th className="px-4 py-3">Reembolsável</th>
                   <th className="px-4 py-3 text-right">Ações</th>
@@ -209,6 +236,9 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
                     <td className="px-4 py-3 text-ink-950">{formatCurrency(Number(transaction.amount))}</td>
                     <td className="px-4 py-3 text-ink-600">
                       {optionLabel(ownershipTypeOptions, transaction.ownership_type)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <CategoryBadge category={categories.find((category) => category.id === transaction.category_id)} />
                     </td>
                     <td className="px-4 py-3 text-ink-600">
                       {people.find((person) => person.id === transaction.person_id)?.name ?? "-"}
@@ -285,7 +315,8 @@ function TransactionModal({
           transaction_date: new Date().toISOString().slice(0, 10),
         };
   const [values, setValues] = useState<TransactionFormValues>(initialValues);
-  const canCreateReimbursement = values.is_reimbursable && values.person_id;
+  const requiresPerson = values.ownership_type !== "personal";
+  const canCreateReimbursement = values.is_reimbursable && values.person_id && requiresPerson;
 
   return (
     <Modal
@@ -373,6 +404,8 @@ function TransactionModal({
         <FieldShell label="Pessoa responsável">
           <select
             className={inputClassName}
+            required={requiresPerson}
+            disabled={!requiresPerson}
             value={values.person_id}
             onChange={(event) => setValues({ ...values, person_id: event.target.value })}
           >
@@ -391,7 +424,9 @@ function TransactionModal({
               setValues({
                 ...values,
                 ownership_type: ownershipType,
+                person_id: ownershipType === "personal" ? "" : values.person_id,
                 is_reimbursable: ownershipType !== "personal" ? values.is_reimbursable : false,
+                create_reimbursement: ownershipType !== "personal" ? values.create_reimbursement : false,
               });
             }}
           >
@@ -400,11 +435,33 @@ function TransactionModal({
             ))}
           </select>
         </FieldShell>
+        <div className="md:col-span-2 rounded-md border border-ink-950/10 bg-slate-50 px-4 py-3 text-sm leading-6 text-ink-600">
+          Despesa pessoal não exige pessoa nem reembolso. Para despesa de terceiro, família ou compartilhada, informe a pessoa responsável e marque reembolso quando alguém for devolver por Pix.
+        </div>
         <FieldShell label="Reembolsável">
           <select
             className={inputClassName}
+            disabled={!requiresPerson}
             value={String(values.is_reimbursable)}
             onChange={(event) => setValues({ ...values, is_reimbursable: event.target.value === "true" })}
+          >
+            <option value="false">Não</option>
+            <option value="true">Sim</option>
+          </select>
+        </FieldShell>
+        <FieldShell label="Compra parcelada?">
+          <select
+            className={inputClassName}
+            value={String(values.is_installment_purchase)}
+            onChange={(event) => {
+              const isInstallmentPurchase = event.target.value === "true";
+              setValues({
+                ...values,
+                is_installment_purchase: isInstallmentPurchase,
+                installment_number: isInstallmentPurchase ? values.installment_number : "",
+                installment_total: isInstallmentPurchase ? values.installment_total : "",
+              });
+            }}
           >
             <option value="false">Não</option>
             <option value="true">Sim</option>
@@ -415,6 +472,7 @@ function TransactionModal({
             min="1"
             type="number"
             className={inputClassName}
+            disabled={!values.is_installment_purchase}
             value={values.installment_number}
             onChange={(event) => setValues({ ...values, installment_number: event.target.value })}
           />
@@ -424,6 +482,7 @@ function TransactionModal({
             min="1"
             type="number"
             className={inputClassName}
+            disabled={!values.is_installment_purchase}
             value={values.installment_total}
             onChange={(event) => setValues({ ...values, installment_total: event.target.value })}
           />

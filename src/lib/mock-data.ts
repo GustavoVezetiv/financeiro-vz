@@ -200,12 +200,12 @@ export const placeholderModules: Record<string, PlaceholderModule> = {
     columns: ["Arquivo", "Módulo", "Linhas", "Válidas", "Status"],
   },
   notes: {
-    title: "Notas",
+    title: "Anotações",
     eyebrow: "Contexto",
     description: "Anotações para decisões, faturas, pessoas, reembolsos e planos.",
     emptyTitle: "Nenhuma nota criada",
     emptyDescription:
-      "Notas vão guardar o contexto por trás das decisões financeiras do mês.",
+      "Anotações vão guardar o contexto por trás das decisões financeiras do mês.",
     columns: ["Título", "Entidade", "Fixada", "Criada em", "Status"],
   },
   settings: {
@@ -218,4 +218,3 @@ export const placeholderModules: Record<string, PlaceholderModule> = {
     columns: ["Preferência", "Valor", "Escopo", "Atualizado", "Status"],
   },
 };
-

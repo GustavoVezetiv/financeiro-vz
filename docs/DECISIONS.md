@@ -8,7 +8,7 @@ Date: 2026-05-15
 
 ## Context
 
-Financeiro VZ needs authentication, PostgreSQL, Row Level Security, and a fast path to a secure web MVP.
+Hub VZ needs authentication, PostgreSQL, Row Level Security, and a fast path to a secure web MVP.
 
 The product will store sensitive personal finance data. From the first version, the app must support login and ensure that each user only accesses their own data.
 
@@ -50,7 +50,7 @@ For an early personal finance decision dashboard, that overhead would slow produ
 
 ## Why Supabase Fits the First Version
 
-Supabase is a good first-version choice because Financeiro VZ needs:
+Supabase is a good first-version choice because Hub VZ needs:
 
 - Login from the beginning.
 - Strict per-user data access.
@@ -107,4 +107,3 @@ Future architecture decisions should cover:
 - Background job strategy.
 - Production backup and recovery approach.
 - Vercel deployment and environment strategy.
-

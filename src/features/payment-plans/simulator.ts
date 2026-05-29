@@ -44,7 +44,7 @@ export function calculatePaymentPlanScenario({
     .reduce((sum, item) => sum + Number(item.amount), 0);
 
   const activeInstallmentAmount = installments
-    .filter((item) => item.status === "active")
+    .filter((item) => item.status === "active" && !item.invoice_id)
     .reduce((sum, item) => sum + Number(item.installment_amount), 0);
   const pendingObligations = items
     .filter((item) => !["income_source", "reimbursement"].includes(item.item_type))

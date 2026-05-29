@@ -8,7 +8,7 @@ export async function listTransactionSupportData(client: AppSupabaseClient) {
       .from("credit_card_invoices")
       .select("id,credit_card_id,reference_month,due_date")
       .order("due_date", { ascending: false }),
-    client.from("categories").select("id,name,type").order("name", { ascending: true }),
+    client.from("categories").select("id,name,type,color,icon").order("name", { ascending: true }),
     client.from("people").select("id,name").order("name", { ascending: true }),
   ]);
 
@@ -87,8 +87,8 @@ function toPayload(
     category_id: values.category_id || null,
     person_id: values.person_id || null,
     ownership_type: values.ownership_type,
-    installment_number: values.installment_number ? Number(values.installment_number) : null,
-    installment_total: values.installment_total ? Number(values.installment_total) : null,
+    installment_number: values.is_installment_purchase && values.installment_number ? Number(values.installment_number) : null,
+    installment_total: values.is_installment_purchase && values.installment_total ? Number(values.installment_total) : null,
     is_reimbursable: values.is_reimbursable,
     reimbursement_status: values.is_reimbursable ? "expected" : "not_applicable",
     notes: values.notes.trim() || null,

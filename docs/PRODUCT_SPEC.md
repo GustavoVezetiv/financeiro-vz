@@ -2,7 +2,7 @@
 
 ## Vision
 
-Financeiro VZ is a personal finance decision dashboard for managing monthly financial pressure, credit card invoices, reimbursements, third-party expenses, and payment planning.
+Hub VZ is a private personal hub for finances, goals, decisions, purchases, notes and planning. The financial module manages monthly financial pressure, credit card invoices, reimbursements, third-party expenses, and payment planning.
 
 The product should help the user decide what to do next with their money. It should not behave like a passive ledger that only records what already happened.
 
@@ -31,7 +31,7 @@ This makes traditional expense tracking insufficient. The system must show finan
 
 ## Core Problems
 
-Financeiro VZ should solve these problems:
+Hub VZ should solve these problems:
 
 1. Credit card invoices are hard to evaluate when they contain personal and third-party expenses.
 2. Reimbursements can temporarily improve cash flow but do not represent free income.
