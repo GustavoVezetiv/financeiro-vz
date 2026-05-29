@@ -5,19 +5,19 @@ import { StatusBadge } from "@/components/ui/status-badge";
 export default function HomePage() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col justify-center px-6 py-12">
-      <StatusBadge tone="info">Fundação do produto</StatusBadge>
+      <StatusBadge tone="info">Beta privado</StatusBadge>
 
       <div className="mt-6 max-w-3xl">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-mint-600">
-          Financeiro VZ
+          Hub VZ
         </p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight text-ink-950 sm:text-6xl">
-          Decisões financeiras mensais, sem confundir reembolso com renda.
+          Hub pessoal para finanças, metas, decisões e planejamento.
         </h1>
         <p className="mt-5 text-lg leading-8 text-ink-600">
-          Estrutura inicial do painel para faturas, contas, reembolsos, fluxo de caixa e
-          planejamento de pagamento. Esta etapa ainda não implementa autenticação,
-          Supabase ou persistência.
+          O Hub VZ está em validação privada. O módulo financeiro já usa Supabase Auth,
+          banco Supabase e rotas protegidas para organizar faturas, contas, reembolsos,
+          fluxo de caixa, metas, compras, anotações e planos de pagamento.
         </p>
       </div>
 
@@ -38,4 +38,3 @@ export default function HomePage() {
     </main>
   );
 }
-

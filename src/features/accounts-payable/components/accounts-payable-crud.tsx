@@ -8,6 +8,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import {
   ActionButton,
+  CategoryBadge,
   CrudFeedback,
   FieldShell,
   inputClassName,
@@ -341,7 +342,7 @@ function AccountsTable({
                 <p className="text-xs text-ink-600">{account.description ?? "-"}</p>
               </td>
               <td className="px-4 py-3 font-medium text-ink-950">{formatCurrency(Number(account.amount))}</td>
-              <td className="px-4 py-3 text-ink-600">{categories.find((category) => category.id === account.category_id)?.name ?? "-"}</td>
+              <td className="px-4 py-3"><CategoryBadge category={categories.find((category) => category.id === account.category_id)} /></td>
               <td className="px-4 py-3 text-ink-600">{people.find((person) => person.id === account.person_id)?.name ?? "-"}</td>
               <td className="px-4 py-3 text-ink-600">{optionLabel(priorityOptions, account.priority)}</td>
               <td className="px-4 py-3 text-ink-600">{optionLabel(accountStatusOptions, account.status)}</td>

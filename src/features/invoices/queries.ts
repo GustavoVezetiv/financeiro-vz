@@ -6,7 +6,7 @@ export async function listInvoices(client: AppSupabaseClient) {
 }
 
 export async function listInvoiceCards(client: AppSupabaseClient) {
-  return client.from("credit_cards").select("id,name,issuer").order("name", { ascending: true });
+  return client.from("credit_cards").select("id,name,issuer,closing_day,due_day").order("name", { ascending: true });
 }
 
 export async function createInvoice(client: AppSupabaseClient, userId: string, values: InvoiceFormValues) {
@@ -45,4 +45,3 @@ function toPayload(userId: string | undefined, values: InvoiceFormValues): Parti
     notes: values.notes.trim() || null,
   };
 }
-

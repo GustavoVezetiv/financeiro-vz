@@ -243,6 +243,7 @@ export type Goal = UserOwnedRow & {
   target_date: string | null;
   monthly_contribution: number;
   status: string;
+  notes: string | null;
 };
 
 export type Note = UserOwnedRow & {

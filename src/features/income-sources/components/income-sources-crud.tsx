@@ -8,6 +8,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import {
   ActionButton,
+  CategoryBadge,
   CrudFeedback,
   FieldShell,
   inputClassName,
@@ -375,7 +376,7 @@ function IncomeTable({
                   {optionLabel(incomeTypeOptions, income.source_type)}
                 </TextBadge>
               </td>
-              <td className="px-4 py-3 text-ink-600">{categories.find((category) => category.id === income.category_id)?.name ?? "-"}</td>
+              <td className="px-4 py-3"><CategoryBadge category={categories.find((category) => category.id === income.category_id)} /></td>
               <td className="px-4 py-3 text-ink-600">{people.find((person) => person.id === income.person_id)?.name ?? "-"}</td>
               <td className="px-4 py-3 text-ink-600">{optionLabel(confidenceOptions, income.confidence)}</td>
               <td className="px-4 py-3 text-ink-600">{optionLabel(incomeStatusOptions, income.status)}</td>
@@ -482,4 +483,3 @@ function IncomeModal({
     </Modal>
   );
 }
-

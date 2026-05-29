@@ -16,7 +16,7 @@ export default function LoginPage() {
           {supabaseConfigured ? "Supabase Auth" : "Configuração pendente"}
         </StatusBadge>
         <h1 className="mt-5 text-2xl font-semibold tracking-tight text-ink-950">
-          Entrar no Financeiro VZ
+          Entrar no Hub VZ
         </h1>
         <p className="mt-3 text-sm leading-6 text-ink-600">
           Use e-mail e senha para entrar ou criar sua conta. O dashboard só fica

@@ -16,7 +16,7 @@ export type AccountPayableFormValues = {
 };
 
 export type AccountPayableRow = AccountPayable;
-export type AccountCategory = Pick<Category, "id" | "name" | "type">;
+export type AccountCategory = Pick<Category, "id" | "name" | "type" | "color" | "icon">;
 export type AccountPerson = Pick<Person, "id" | "name">;
 
 export const emptyAccountForm: AccountPayableFormValues = {
@@ -50,4 +50,3 @@ export function accountToFormValues(account: AccountPayableRow): AccountPayableF
     notes: account.notes ?? "",
   };
 }
-

@@ -8,7 +8,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import { createPlannedPurchase, deletePlannedPurchase, listPlannedPurchases, listPlannedPurchaseSupportData, updatePlannedPurchase } from "@/features/planned-purchases/queries";
 import { decisionStatusOptions, emptyPlannedPurchaseForm, plannedPurchaseToFormValues, type PlannedPurchaseFormValues, type PlannedPurchaseRow, type PlannedPurchaseSupportData } from "@/features/planned-purchases/types";
-import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
+import { ActionButton, CategoryBadge, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { optionLabel, paymentMethodOptions, priorityOptions } from "@/features/shared/options";
 import type { FeedbackState } from "@/features/shared/types";
@@ -173,6 +173,7 @@ export function PlannedPurchasesCrud() {
                 <tr>
                   <th className="px-4 py-3">Compra</th>
                   <th className="px-4 py-3">Valor</th>
+                  <th className="px-4 py-3">Categoria</th>
                   <th className="px-4 py-3">Data alvo</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Risco</th>
@@ -187,6 +188,7 @@ export function PlannedPurchasesCrud() {
                       <p className="text-xs text-ink-600">{item.description ?? "Sem descrição"}</p>
                     </td>
                     <td className="px-4 py-3 text-ink-950">{formatCurrency(Number(item.estimated_amount))}</td>
+                    <td className="px-4 py-3"><CategoryBadge category={support.categories.find((category) => category.id === item.category_id)} /></td>
                     <td className="px-4 py-3 text-ink-600">{formatDate(item.target_date)}</td>
                     <td className="px-4 py-3"><TextBadge tone={item.decision_status === "approved" ? "danger" : item.decision_status === "purchased" ? "success" : "neutral"}>{optionLabel(decisionStatusOptions, item.decision_status)}</TextBadge></td>
                     <td className="px-4 py-3 text-ink-600">{optionLabel(priorityOptions, item.risk_level)}</td>

@@ -16,9 +16,9 @@ export function Sidebar({ items }: SidebarProps) {
     <aside className="hidden min-h-screen w-72 shrink-0 border-r border-ink-950/10 bg-white/82 px-4 py-5 backdrop-blur lg:block">
       <div className="px-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-mint-600">
-          Financeiro VZ
+          Hub VZ
         </p>
-        <h2 className="mt-2 text-lg font-semibold text-ink-950">Painel financeiro</h2>
+        <h2 className="mt-2 text-lg font-semibold text-ink-950">Módulo financeiro</h2>
       </div>
 
       <nav className="mt-7 space-y-1" aria-label="Navegação principal">
@@ -57,4 +57,3 @@ export function Sidebar({ items }: SidebarProps) {
     </aside>
   );
 }
-

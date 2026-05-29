@@ -386,6 +386,7 @@ Important fields:
 - `target_date`
 - `monthly_contribution`
 - `status`: active, paused, completed, canceled.
+- `notes`
 
 Relationships:
 
@@ -483,4 +484,3 @@ Each user-owned table should have policies similar to:
 - Users can delete or soft-delete rows where `user_id = auth.uid()`.
 
 For `profiles`, users should only access their own profile row where `id = auth.uid()`.
-

@@ -91,6 +91,15 @@ export function PaymentPlansCrud() {
         action={<ActionButton onClick={() => setModal({ mode: "create", plan: null })}>Novo plano</ActionButton>}
       />
       <CrudFeedback feedback={feedback} />
+      <SectionCard
+        title="Simulação, não pagamento automático"
+        description="O plano de pagamento organiza decisões do mês. Ele não paga contas, não altera faturas e não cria parcelamentos automaticamente."
+      >
+        <p className="text-sm leading-6 text-ink-600">
+          Use o plano para decidir o que pagar agora, o que aguardar, o que negociar e o que jogar para o cartão.
+          Depois execute os pagamentos fora do app e atualize os registros manualmente.
+        </p>
+      </SectionCard>
       <SectionCard title="Planos cadastrados">
         {loading ? (
           <p className="text-sm text-ink-600">Carregando planos...</p>

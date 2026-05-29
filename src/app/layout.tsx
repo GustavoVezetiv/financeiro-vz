@@ -14,11 +14,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Financeiro VZ",
-    template: "%s | Financeiro VZ",
+    default: "Hub VZ",
+    template: "%s | Hub VZ",
   },
   description:
-    "Painel pessoal de decisão financeira para faturas, reembolsos, fluxo de caixa e planejamento mensal.",
+    "Hub pessoal em beta privado para finanças, metas, decisões, compras, anotações e planejamento.",
 };
 
 export default function RootLayout({
@@ -34,4 +34,3 @@ export default function RootLayout({
     </html>
   );
 }
-

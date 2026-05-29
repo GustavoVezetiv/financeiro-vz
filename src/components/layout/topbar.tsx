@@ -35,7 +35,7 @@ export function Topbar({ items, userEmail }: TopbarProps) {
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-mint-600 lg:hidden">
-            Financeiro VZ
+            Hub VZ
           </p>
           <p className="truncate text-sm font-medium text-ink-600">
             {userEmail ? `Conectado como ${userEmail}` : "Sessão protegida"}
