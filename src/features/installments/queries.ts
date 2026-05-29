@@ -58,6 +58,7 @@ function toPayload(userId: string | undefined, values: InstallmentFormValues): P
     invoice_id: values.invoice_id || null,
     category_id: values.category_id || null,
     person_id: values.person_id || null,
+    installment_origin: values.installment_origin,
     status: values.status,
     notes: values.notes.trim() || null,
   };

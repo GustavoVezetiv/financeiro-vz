@@ -186,6 +186,7 @@ export type Installment = UserOwnedRow & {
   due_month: string;
   start_date: string | null;
   end_date: string | null;
+  installment_origin: string;
   status: string;
   notes: string | null;
 };

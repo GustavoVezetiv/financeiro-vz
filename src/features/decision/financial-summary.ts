@@ -101,10 +101,11 @@ export function buildFinancialSummary(data: FinancialDataset, period?: PeriodVal
       isWithin(invoice.due_date, boundaries.nextMonthStart, boundaries.nextMonthEnd),
   );
   const activeInstallments = data.installments.filter((installment) => installment.status === "active");
-  const currentInstallments = activeInstallments.filter((installment) =>
+  const countableInstallments = activeInstallments.filter((installment) => !installment.invoice_id);
+  const currentInstallments = countableInstallments.filter((installment) =>
     isWithin(installment.due_month, boundaries.monthStart, boundaries.monthEnd),
   );
-  const nextMonthInstallments = activeInstallments.filter((installment) =>
+  const nextMonthInstallments = countableInstallments.filter((installment) =>
     isWithin(installment.due_month, boundaries.nextMonthStart, boundaries.nextMonthEnd),
   );
   const openReimbursements = data.reimbursements.filter((item) =>

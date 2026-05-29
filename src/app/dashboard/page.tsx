@@ -503,7 +503,7 @@ function buildDashboardSummary(
 
   const estimatedNetPersonalCost = Math.max(openInvoiceTotal - openReimbursements, 0);
   const activeInstallmentMonthlyAmount = installments
-    .filter((item) => item.status === "active")
+    .filter((item) => item.status === "active" && !item.invoice_id)
     .reduce((total, item) => total + Number(item.installment_amount), 0);
 
   const activePlannedPurchases = plannedPurchases.filter((item) =>
