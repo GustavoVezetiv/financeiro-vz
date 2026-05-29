@@ -13,6 +13,7 @@ import {
   FieldShell,
   inputClassName,
   Modal,
+  TextBadge,
 } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate, todayISO } from "@/features/shared/format";
 import {
@@ -27,6 +28,7 @@ import type { FeedbackState } from "@/features/shared/types";
 import {
   createAccountPayable,
   deleteAccountPayable,
+  generateRecurringAccounts,
   listAccountsPayable,
   listAccountSupportData,
   updateAccountPayable,
@@ -58,6 +60,7 @@ export function AccountsPayableCrud() {
   const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
@@ -191,6 +194,26 @@ export function AccountsPayableCrud() {
       return;
     }
 
+    if (values.is_recurring) {
+      const recurrenceStartDate = values.recurrence_start_date || values.due_date;
+
+      if (!recurrenceStartDate) {
+        setFeedback({ type: "error", message: "Informe o início da recorrência." });
+        return;
+      }
+
+      if (values.recurrence_end_date && values.recurrence_end_date < recurrenceStartDate) {
+        setFeedback({ type: "error", message: "O fim da recorrência deve ser depois do início." });
+        return;
+      }
+
+      const occurrences = Number(values.recurrence_occurrences || 0);
+      if (Number.isNaN(occurrences) || occurrences < 0 || occurrences > 24) {
+        setFeedback({ type: "error", message: "A quantidade de ocorrências deve ficar entre 0 e 24." });
+        return;
+      }
+    }
+
     if (!userId) {
       setFeedback({ type: "error", message: "Sessão não encontrada. Entre novamente." });
       return;
@@ -211,14 +234,73 @@ export function AccountsPayableCrud() {
         return;
       }
 
+      const savedAccount = result.data as AccountPayableRow | null;
+      const occurrencesToGenerate = Number(values.recurrence_occurrences || 0);
+      let generationMessage = "";
+
+      if (savedAccount && values.is_recurring && occurrencesToGenerate > 0) {
+        const generation = await generateRecurringAccounts(client, userId, savedAccount, occurrencesToGenerate);
+
+        if (generation.error) {
+          setFeedback({ type: "error", message: generation.error.message });
+          return;
+        }
+
+        generationMessage = ` ${generation.created} ocorrência(s) criada(s). ${generation.skipped} duplicada(s) ignorada(s).`;
+      }
+
       setFeedback({
         type: "success",
-        message: modal?.mode === "edit" ? "Conta atualizada." : "Conta criada.",
+        message: `${modal?.mode === "edit" ? "Conta atualizada." : "Conta criada."}${generationMessage}`,
       });
       setModal(null);
       await loadAccounts();
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleGenerateRecurring(account: AccountPayableRow) {
+    if (!userId) {
+      setFeedback({ type: "error", message: "Sessão não encontrada. Entre novamente." });
+      return;
+    }
+
+    const rawOccurrences = window.prompt(
+      "Esta ação cria contas futuras com base nesta recorrência.\nVocê pode editar ou excluir cada ocorrência depois.\n\nQuantas próximas ocorrências deseja gerar? Máximo: 24.",
+      "6",
+    );
+
+    if (rawOccurrences === null) return;
+
+    const occurrences = Number(rawOccurrences);
+
+    if (Number.isNaN(occurrences) || occurrences < 1 || occurrences > 24) {
+      setFeedback({ type: "error", message: "Informe uma quantidade entre 1 e 24." });
+      return;
+    }
+
+    setGeneratingId(account.id);
+    setFeedback(null);
+
+    try {
+      const result = await generateRecurringAccounts(createClient(), userId, account, occurrences);
+
+      if (result.error) {
+        setFeedback({ type: "error", message: result.error.message });
+        return;
+      }
+
+      setFeedback({
+        type: "success",
+        message: `${result.created} conta(s) futura(s) criada(s). ${result.skipped} duplicada(s) ignorada(s).`,
+      });
+      await loadAccounts();
+    } catch (error) {
+      console.error("Erro técnico ao gerar contas recorrentes:", error);
+      setFeedback({ type: "error", message: "Não foi possível gerar as próximas contas." });
+    } finally {
+      setGeneratingId(null);
     }
   }
 
@@ -290,6 +372,8 @@ export function AccountsPayableCrud() {
             people={people}
             onEdit={(account) => setModal({ mode: "edit", account })}
             onDelete={(account) => void handleDelete(account)}
+            onGenerate={(account) => void handleGenerateRecurring(account)}
+            generatingId={generatingId}
           />
         )}
       </SectionCard>
@@ -314,12 +398,16 @@ function AccountsTable({
   people,
   onEdit,
   onDelete,
+  onGenerate,
+  generatingId,
 }: {
   accounts: AccountPayableRow[];
   categories: AccountCategory[];
   people: AccountPerson[];
   onEdit: (account: AccountPayableRow) => void;
   onDelete: (account: AccountPayableRow) => void;
+  onGenerate: (account: AccountPayableRow) => void;
+  generatingId: string | null;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -332,6 +420,7 @@ function AccountsTable({
             <th className="px-4 py-3">Categoria</th>
             <th className="px-4 py-3">Pessoa</th>
             <th className="px-4 py-3">Prioridade</th>
+            <th className="px-4 py-3">Recorrência</th>
             <th className="px-4 py-3">Status</th>
             <th className="px-4 py-3 text-right">Ações</th>
           </tr>
@@ -348,9 +437,27 @@ function AccountsTable({
               <td className="px-4 py-3"><CategoryBadge category={categories.find((category) => category.id === account.category_id)} /></td>
               <td className="px-4 py-3 text-ink-600">{people.find((person) => person.id === account.person_id)?.name ?? "-"}</td>
               <td className="px-4 py-3 text-ink-600">{optionLabel(priorityOptions, account.priority)}</td>
+              <td className="px-4 py-3">
+                {account.is_recurring ? (
+                  <TextBadge tone={account.recurrence_parent_id ? "info" : "warning"}>
+                    {account.recurrence_parent_id ? "Ocorrência" : "Recorrente"}
+                  </TextBadge>
+                ) : (
+                  <span className="text-ink-500">-</span>
+                )}
+              </td>
               <td className="px-4 py-3 text-ink-600">{optionLabel(accountStatusOptions, account.status)}</td>
               <td className="px-4 py-3">
                 <div className="flex justify-end gap-2">
+                  {account.is_recurring && !account.recurrence_parent_id ? (
+                    <ActionButton
+                      variant="secondary"
+                      disabled={generatingId === account.id}
+                      onClick={() => onGenerate(account)}
+                    >
+                      {generatingId === account.id ? "Gerando..." : "Gerar próximas"}
+                    </ActionButton>
+                  ) : null}
                   <ActionButton variant="secondary" onClick={() => onEdit(account)}>Editar</ActionButton>
                   <ActionButton variant="danger" onClick={() => onDelete(account)}>Excluir</ActionButton>
                 </div>
@@ -442,6 +549,58 @@ function AccountModal({
             {priorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </FieldShell>
+        <FieldShell label="Conta recorrente?">
+          <select
+            value={String(values.is_recurring)}
+            onChange={(event) => {
+              const isRecurring = event.target.value === "true";
+              setValues({
+                ...values,
+                is_recurring: isRecurring,
+                recurrence_start_date: isRecurring ? values.recurrence_start_date || values.due_date : values.recurrence_start_date,
+              });
+            }}
+            className={inputClassName}
+          >
+            <option value="false">Não</option>
+            <option value="true">Sim</option>
+          </select>
+        </FieldShell>
+        {values.is_recurring ? (
+          <>
+            <FieldShell label="Frequência">
+              <select value={values.recurrence_frequency} onChange={(event) => setValues({ ...values, recurrence_frequency: event.target.value as AccountPayableFormValues["recurrence_frequency"] })} className={inputClassName}>
+                <option value="monthly">Mensal</option>
+                <option value="weekly">Semanal</option>
+                <option value="yearly">Anual</option>
+              </select>
+            </FieldShell>
+            <FieldShell label="Início da recorrência">
+              <input
+                type="date"
+                value={values.recurrence_start_date || values.due_date}
+                onChange={(event) => setValues({ ...values, recurrence_start_date: event.target.value })}
+                className={inputClassName}
+              />
+            </FieldShell>
+            <FieldShell label="Fim da recorrência opcional">
+              <input type="date" value={values.recurrence_end_date} onChange={(event) => setValues({ ...values, recurrence_end_date: event.target.value })} className={inputClassName} />
+            </FieldShell>
+            <FieldShell label="Quantidade de próximas ocorrências a gerar">
+              <input
+                type="number"
+                min="0"
+                max="24"
+                value={values.recurrence_occurrences}
+                onChange={(event) => setValues({ ...values, recurrence_occurrences: event.target.value })}
+                className={inputClassName}
+              />
+            </FieldShell>
+            <div className="rounded-md border border-amberRisk-500/20 bg-amberRisk-100 p-4 text-sm leading-6 text-ink-800 md:col-span-2">
+              Esta ação cria contas futuras com base nesta recorrência. Você pode editar ou excluir cada ocorrência depois.
+            </div>
+          </>
+        ) : null}
         <div className="md:col-span-2">
           <FieldShell label="Descrição">
             <textarea value={values.description} onChange={(event) => setValues({ ...values, description: event.target.value })} className={inputClassName} rows={3} />

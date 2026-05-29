@@ -1,5 +1,7 @@
 import type { AccountPayable, Category, Person, RiskLevel } from "@/lib/supabase/types";
 
+export type AccountRecurrenceFrequency = "monthly" | "weekly" | "yearly";
+
 export type AccountPayableFormValues = {
   title: string;
   description: string;
@@ -13,6 +15,11 @@ export type AccountPayableFormValues = {
   can_delay: boolean;
   delay_risk: RiskLevel;
   notes: string;
+  is_recurring: boolean;
+  recurrence_frequency: AccountRecurrenceFrequency;
+  recurrence_start_date: string;
+  recurrence_end_date: string;
+  recurrence_occurrences: string;
 };
 
 export type AccountPayableRow = AccountPayable;
@@ -32,6 +39,11 @@ export const emptyAccountForm: AccountPayableFormValues = {
   can_delay: false,
   delay_risk: "medium",
   notes: "",
+  is_recurring: false,
+  recurrence_frequency: "monthly",
+  recurrence_start_date: "",
+  recurrence_end_date: "",
+  recurrence_occurrences: "0",
 };
 
 export function accountToFormValues(account: AccountPayableRow): AccountPayableFormValues {
@@ -48,5 +60,10 @@ export function accountToFormValues(account: AccountPayableRow): AccountPayableF
     can_delay: account.can_delay,
     delay_risk: account.delay_risk,
     notes: account.notes ?? "",
+    is_recurring: account.is_recurring,
+    recurrence_frequency: (account.recurrence_frequency as AccountRecurrenceFrequency | null) ?? "monthly",
+    recurrence_start_date: account.recurrence_start_date ?? account.due_date,
+    recurrence_end_date: account.recurrence_end_date ?? "",
+    recurrence_occurrences: "0",
   };
 }
