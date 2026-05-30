@@ -81,6 +81,14 @@ export type AccountPayable = UserOwnedRow & {
   payment_method_planned: string;
   can_delay: boolean;
   delay_risk: RiskLevel;
+  source_type: string;
+  source_id: string | null;
+  installment_id: string | null;
+  installment_number: number | null;
+  is_generated: boolean;
+  paid_with_credit_card: boolean;
+  credit_card_transaction_id: string | null;
+  credit_card_invoice_id: string | null;
   notes: string | null;
 };
 
@@ -165,6 +173,12 @@ export type Reimbursement = UserOwnedRow & {
   expected_date: string | null;
   received_at: string | null;
   received_date: string | null;
+  is_recurring: boolean;
+  recurrence_frequency: string | null;
+  recurrence_start_date: string | null;
+  recurrence_end_date: string | null;
+  recurrence_parent_id: string | null;
+  recurrence_generated_until: string | null;
   pix_reference: string | null;
   notes: string | null;
 };

@@ -18,6 +18,11 @@ export type ReimbursementFormValues = {
   received_date: string;
   status: string;
   notes: string;
+  is_recurring: boolean;
+  recurrence_frequency: "monthly";
+  recurrence_start_date: string;
+  recurrence_end_date: string;
+  recurrence_occurrences: string;
 };
 
 export const emptyReimbursementForm: ReimbursementFormValues = {
@@ -32,6 +37,11 @@ export const emptyReimbursementForm: ReimbursementFormValues = {
   received_date: "",
   status: "expected",
   notes: "",
+  is_recurring: false,
+  recurrence_frequency: "monthly",
+  recurrence_start_date: "",
+  recurrence_end_date: "",
+  recurrence_occurrences: "0",
 };
 
 export function reimbursementToFormValues(reimbursement: ReimbursementRow): ReimbursementFormValues {
@@ -47,5 +57,10 @@ export function reimbursementToFormValues(reimbursement: ReimbursementRow): Reim
     received_date: reimbursement.received_date ?? "",
     status: reimbursement.status,
     notes: reimbursement.notes ?? "",
+    is_recurring: reimbursement.is_recurring,
+    recurrence_frequency: "monthly",
+    recurrence_start_date: reimbursement.recurrence_start_date ?? reimbursement.expected_date ?? "",
+    recurrence_end_date: reimbursement.recurrence_end_date ?? "",
+    recurrence_occurrences: "0",
   };
 }

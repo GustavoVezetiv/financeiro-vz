@@ -9,6 +9,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import {
   createReimbursement,
   deleteReimbursement,
+  generateRecurringReimbursements,
   listReimbursements,
   listReimbursementSupportData,
   updateReimbursement,
@@ -23,7 +24,7 @@ import {
   type ReimbursementRow,
   type ReimbursementTransaction,
 } from "@/features/reimbursements/types";
-import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
+import { ActionButton, BulkActionsBar, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge, TitleButton } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { optionLabel, reimbursementStatusOptions } from "@/features/shared/options";
 import { PeriodFilter } from "@/features/shared/period-filter";
@@ -47,8 +48,11 @@ export function ReimbursementsCrud() {
   const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const periodReimbursements = useMemo(() => {
     return reimbursements.filter((reimbursement) =>
@@ -157,6 +161,14 @@ export function ReimbursementsCrud() {
       setFeedback({ type: "error", message: "Pessoa é obrigatória e valores não podem ser negativos." });
       return;
     }
+    if (values.is_recurring && !values.recurrence_start_date && !values.expected_date) {
+      setFeedback({ type: "error", message: "Informe o início do reembolso recorrente." });
+      return;
+    }
+    if (values.is_recurring && values.recurrence_end_date && values.recurrence_end_date < (values.recurrence_start_date || values.expected_date)) {
+      setFeedback({ type: "error", message: "O fim da recorrência deve ser depois do início." });
+      return;
+    }
     if (!userId) return;
 
     setSaving(true);
@@ -168,14 +180,65 @@ export function ReimbursementsCrud() {
 
     if (result.error) setFeedback({ type: "error", message: result.error.message });
     else {
+      let generatedMessage = "";
+      const occurrences = Number(values.recurrence_occurrences || 0);
+
+      if (values.is_recurring && occurrences > 0) {
+        const generated = await generateRecurringReimbursements(client, userId, result.data, occurrences);
+
+        if (generated.error) {
+          setSaving(false);
+          setFeedback({ type: "error", message: generated.error.message });
+          return;
+        }
+
+        generatedMessage = ` ${generated.created} ocorrência(s) gerada(s), ${generated.skipped} já existia(m).`;
+      }
+
       setFeedback({
         type: "success",
-        message: modal?.mode === "edit" ? "Reembolso atualizado." : "Reembolso criado.",
+        message: `${modal?.mode === "edit" ? "Reembolso atualizado." : "Reembolso criado."}${generatedMessage}`,
       });
       setModal(null);
       await loadData();
     }
     setSaving(false);
+  }
+
+  async function handleGenerateRecurring(reimbursement: ReimbursementRow) {
+    if (!userId) {
+      setFeedback({ type: "error", message: "Sessão não encontrada." });
+      return;
+    }
+
+    const raw = window.prompt("Quantas próximas ocorrências deseja gerar? Máximo 24.", "12");
+    if (!raw) return;
+
+    const occurrences = Number(raw);
+    if (Number.isNaN(occurrences) || occurrences < 1) {
+      setFeedback({ type: "error", message: "Informe uma quantidade válida." });
+      return;
+    }
+
+    setGeneratingId(reimbursement.id);
+    setFeedback(null);
+
+    try {
+      const result = await generateRecurringReimbursements(createClient(), userId, reimbursement, occurrences);
+
+      if (result.error) {
+        setFeedback({ type: "error", message: result.error.message });
+        return;
+      }
+
+      setFeedback({ type: "success", message: `${result.created} reembolso(s) gerado(s). ${result.skipped} já existia(m).` });
+      await loadData();
+    } catch (error) {
+      console.error("Erro técnico ao gerar reembolsos recorrentes:", error);
+      setFeedback({ type: "error", message: "Não foi possível gerar os próximos reembolsos." });
+    } finally {
+      setGeneratingId(null);
+    }
   }
 
   async function handleDelete(reimbursement: ReimbursementRow) {
@@ -185,6 +248,39 @@ export function ReimbursementsCrud() {
     else {
       setFeedback({ type: "success", message: "Reembolso excluído." });
       await loadData();
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    if (!window.confirm(`Tem certeza que deseja excluir ${ids.length} itens? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setDeletingSelected(true);
+    setFeedback(null);
+
+    try {
+      const client = createClient();
+      const results = await Promise.all(ids.map((id) => deleteReimbursement(client, id)));
+      const failed = results.find((result) => result.error);
+
+      if (failed?.error) {
+        console.error("Erro técnico ao excluir reembolsos selecionados:", failed.error);
+        setFeedback({ type: "error", message: "Não foi possível excluir todos os itens selecionados." });
+        return;
+      }
+
+      setSelectedIds(new Set());
+      setFeedback({ type: "success", message: `${ids.length} reembolso(s) excluído(s).` });
+      await loadData();
+    } catch (error) {
+      console.error("Erro técnico ao excluir reembolsos selecionados:", error);
+      setFeedback({ type: "error", message: "Não foi possível excluir os itens selecionados." });
+    } finally {
+      setDeletingSelected(false);
     }
   }
 
@@ -213,6 +309,10 @@ export function ReimbursementsCrud() {
         <p className="text-sm leading-6 text-ink-600">
           Mesmo quando entra via Pix, esse valor deve ser lido como dinheiro vinculado a uma compra,
           conta ou favor financeiro. Ele não aumenta sua renda real disponível.
+        </p>
+        <p className="mt-2 text-sm leading-6 text-ink-600">
+          Reembolsos recorrentes servem para valores mensais combinados, como assinaturas familiares.
+          Gere próximas ocorrências de forma controlada e revise cada uma antes de considerar no caixa.
         </p>
       </SectionCard>
 
@@ -270,10 +370,33 @@ export function ReimbursementsCrud() {
         ) : filteredReimbursements.length === 0 ? (
           <EmptyState title="Nenhum reembolso no período" description="Ajuste o período ou os filtros para ver outros reembolsos." />
         ) : (
+          <>
+          <BulkActionsBar
+            selectedCount={selectedIds.size}
+            deleting={deletingSelected}
+            onClear={() => setSelectedIds(new Set())}
+            onDelete={() => void handleBulkDelete()}
+          />
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600">
                 <tr>
+                  <th className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={filteredReimbursements.length > 0 && filteredReimbursements.every((item) => selectedIds.has(item.id))}
+                      onChange={(event) => {
+                        if (event.target.checked) {
+                          setSelectedIds(new Set([...selectedIds, ...filteredReimbursements.map((item) => item.id)]));
+                          return;
+                        }
+                        const next = new Set(selectedIds);
+                        filteredReimbursements.forEach((item) => next.delete(item.id));
+                        setSelectedIds(next);
+                      }}
+                      aria-label="Selecionar todos os reembolsos filtrados"
+                    />
+                  </th>
                   <th className="px-4 py-3">Pessoa</th>
                   <th className="px-4 py-3">Descrição</th>
                   <th className="px-4 py-3">Esperado</th>
@@ -281,14 +404,30 @@ export function ReimbursementsCrud() {
                   <th className="px-4 py-3">Data prevista</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Vínculo</th>
+                  <th className="px-4 py-3">Recorrência</th>
                   <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-950/10">
                 {filteredReimbursements.map((reimbursement) => (
                   <tr key={reimbursement.id}>
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(reimbursement.id)}
+                        onChange={(event) => {
+                          const next = new Set(selectedIds);
+                          if (event.target.checked) next.add(reimbursement.id);
+                          else next.delete(reimbursement.id);
+                          setSelectedIds(next);
+                        }}
+                        aria-label={`Selecionar ${reimbursement.description ?? "reembolso"}`}
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium text-ink-950">
-                      {people.find((person) => person.id === reimbursement.person_id)?.name ?? "-"}
+                      <TitleButton onClick={() => setModal({ mode: "edit", reimbursement })}>
+                        {people.find((person) => person.id === reimbursement.person_id)?.name ?? "-"}
+                      </TitleButton>
                     </td>
                     <td className="px-4 py-3 text-ink-600">{reimbursement.description ?? "-"}</td>
                     <td className="px-4 py-3 text-ink-950">{formatCurrency(Number(reimbursement.expected_amount))}</td>
@@ -303,7 +442,23 @@ export function ReimbursementsCrud() {
                       </TextBadge>
                     </td>
                     <td className="px-4 py-3">
+                      {reimbursement.is_recurring ? (
+                        <TextBadge tone="info">{reimbursement.recurrence_parent_id ? "Ocorrência" : "Recorrente"}</TextBadge>
+                      ) : (
+                        <span className="text-ink-500">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
+                        {reimbursement.is_recurring && !reimbursement.recurrence_parent_id ? (
+                          <ActionButton
+                            variant="secondary"
+                            disabled={generatingId === reimbursement.id}
+                            onClick={() => void handleGenerateRecurring(reimbursement)}
+                          >
+                            {generatingId === reimbursement.id ? "Gerando..." : "Gerar próximas"}
+                          </ActionButton>
+                        ) : null}
                         <ActionButton variant="secondary" onClick={() => setModal({ mode: "edit", reimbursement })}>Editar</ActionButton>
                         <ActionButton variant="danger" onClick={() => void handleDelete(reimbursement)}>Excluir</ActionButton>
                       </div>
@@ -313,6 +468,7 @@ export function ReimbursementsCrud() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </SectionCard>
 
@@ -392,6 +548,44 @@ function ReimbursementModal({
         <FieldShell label="Data recebida">
           <input type="date" className={inputClassName} value={values.received_date} onChange={(event) => setValues({ ...values, received_date: event.target.value })} />
         </FieldShell>
+        <FieldShell label="Reembolso recorrente?">
+          <select
+            className={inputClassName}
+            value={String(values.is_recurring)}
+            onChange={(event) => setValues({ ...values, is_recurring: event.target.value === "true" })}
+          >
+            <option value="false">Não</option>
+            <option value="true">Sim, mensal</option>
+          </select>
+        </FieldShell>
+        {values.is_recurring ? (
+          <>
+            <FieldShell label="Frequência">
+              <select className={inputClassName} value={values.recurrence_frequency} onChange={(event) => setValues({ ...values, recurrence_frequency: event.target.value as "monthly" })}>
+                <option value="monthly">Mensal</option>
+              </select>
+            </FieldShell>
+            <FieldShell label="Início">
+              <input type="date" className={inputClassName} value={values.recurrence_start_date} onChange={(event) => setValues({ ...values, recurrence_start_date: event.target.value })} />
+            </FieldShell>
+            <FieldShell label="Fim opcional">
+              <input type="date" className={inputClassName} value={values.recurrence_end_date} onChange={(event) => setValues({ ...values, recurrence_end_date: event.target.value })} />
+            </FieldShell>
+            <FieldShell label="Gerar próximas ocorrências">
+              <input
+                min="0"
+                max="24"
+                type="number"
+                className={inputClassName}
+                value={values.recurrence_occurrences}
+                onChange={(event) => setValues({ ...values, recurrence_occurrences: event.target.value })}
+              />
+            </FieldShell>
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 md:col-span-2">
+              Reembolsos recorrentes geram novas cobranças mensais sem transformar esse dinheiro em renda livre.
+            </p>
+          </>
+        ) : null}
         <FieldShell label="Lançamento do cartão">
           <select className={inputClassName} value={values.credit_card_transaction_id} onChange={(event) => setValues({ ...values, credit_card_transaction_id: event.target.value })}>
             <option value="">Sem vínculo</option>

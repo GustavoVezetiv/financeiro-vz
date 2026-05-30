@@ -9,6 +9,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import {
   createInstallment,
   deleteInstallment,
+  generateInstallmentAccounts,
   listInstallments,
   listInstallmentSupportData,
   updateInstallment,
@@ -24,7 +25,7 @@ import {
   type InstallmentPerson,
   type InstallmentRow,
 } from "@/features/installments/types";
-import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
+import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge, TitleButton } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { installmentStatusOptions, optionLabel } from "@/features/shared/options";
 import { PeriodFilter } from "@/features/shared/period-filter";
@@ -47,6 +48,7 @@ export function InstallmentsCrud() {
   const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [generatingAccountsId, setGeneratingAccountsId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
@@ -145,7 +147,24 @@ export function InstallmentsCrud() {
         return;
       }
 
-      setFeedback({ type: "success", message: modal?.mode === "edit" ? "Parcelamento atualizado." : "Parcelamento criado." });
+      let generationMessage = "";
+      const savedInstallment = result.data as InstallmentRow | null;
+
+      if (savedInstallment && values.generate_accounts) {
+        const generation = await generateInstallmentAccounts(client, userId, savedInstallment);
+
+        if (generation.error) {
+          setFeedback({ type: "error", message: generation.error.message });
+          return;
+        }
+
+        generationMessage = ` ${generation.created} conta(s) mensal(is) gerada(s). ${generation.skipped} duplicada(s) ignorada(s).`;
+      }
+
+      setFeedback({
+        type: "success",
+        message: `${modal?.mode === "edit" ? "Parcelamento atualizado." : "Parcelamento criado."}${generationMessage}`,
+      });
       setModal(null);
       await loadData();
     } catch (error) {
@@ -156,6 +175,40 @@ export function InstallmentsCrud() {
       });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleGenerateAccounts(item: InstallmentRow) {
+    if (!userId) {
+      setFeedback({ type: "error", message: "Sessão não encontrada. Entre novamente para gerar contas." });
+      return;
+    }
+
+    if (!window.confirm("Parcelamentos geram obrigações mensais em Contas. Não cadastre a mesma parcela manualmente em Contas para evitar duplicidade. Deseja gerar as contas deste parcelamento?")) {
+      return;
+    }
+
+    setGeneratingAccountsId(item.id);
+    setFeedback(null);
+
+    try {
+      const result = await generateInstallmentAccounts(createClient(), userId, item);
+
+      if (result.error) {
+        setFeedback({ type: "error", message: result.error.message });
+        return;
+      }
+
+      setFeedback({
+        type: "success",
+        message: `${result.created} conta(s) mensal(is) gerada(s). ${result.skipped} duplicada(s) ignorada(s).`,
+      });
+      await loadData();
+    } catch (error) {
+      console.error("Erro inesperado ao gerar contas do parcelamento:", error);
+      setFeedback({ type: "error", message: "Não foi possível gerar as contas mensais do parcelamento." });
+    } finally {
+      setGeneratingAccountsId(null);
     }
   }
 
@@ -178,6 +231,11 @@ export function InstallmentsCrud() {
         action={<ActionButton onClick={() => setModal({ mode: "create", installment: null })}>Novo parcelamento</ActionButton>}
       />
       <CrudFeedback feedback={feedback} />
+      <SectionCard title="Como usar" description="Parcelamentos geram obrigações mensais em Contas.">
+        <p className="text-sm leading-6 text-ink-600">
+          Cadastre o compromisso inteiro aqui e gere as parcelas mensais em Contas. Não cadastre a mesma parcela manualmente em Contas para evitar duplicidade.
+        </p>
+      </SectionCard>
       <PeriodFilter value={period} onChange={setPeriod} description="Escolha o período de impacto dos parcelamentos." />
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Parcelamentos ativos" value={formatCurrency(summary.activeTotal)} helper="Valor total original dos ativos." tone="info" />
@@ -225,7 +283,9 @@ export function InstallmentsCrud() {
                 {filtered.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-3">
-                      <p className="font-medium text-ink-950">{item.description}</p>
+                      <TitleButton onClick={() => setModal({ mode: "edit", installment: item })}>
+                        {item.description}
+                      </TitleButton>
                       {item.invoice_id ? (
                         <p className="mt-1 max-w-72 text-xs leading-5 text-amberRisk-500">
                           Este parcelamento está vinculado a uma fatura. Verifique se o valor já está sendo contado na fatura.
@@ -246,6 +306,13 @@ export function InstallmentsCrud() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
                         <ActionButton variant="secondary" onClick={() => setModal({ mode: "edit", installment: item })}>Editar</ActionButton>
+                        <ActionButton
+                          variant="secondary"
+                          disabled={generatingAccountsId === item.id}
+                          onClick={() => void handleGenerateAccounts(item)}
+                        >
+                          {generatingAccountsId === item.id ? "Gerando..." : "Gerar contas"}
+                        </ActionButton>
                         <ActionButton variant="danger" onClick={() => void handleDelete(item)}>Excluir</ActionButton>
                       </div>
                     </td>
@@ -299,7 +366,7 @@ function InstallmentModal({
     <Modal title={modal?.mode === "edit" ? "Editar parcelamento" : "Novo parcelamento"} onClose={onClose}>
       <form className="grid gap-4 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); onSubmit(values); }}>
         <div className="rounded-md border border-ink-950/10 bg-slate-50 p-4 text-sm leading-6 text-ink-700 md:col-span-2">
-          Use parcelamento para compromissos divididos em várias parcelas. Para uma compra comum na fatura, use lançamento de fatura. Para uma dívida ou financiamento fora do cartão, use parcelamento sem cartão.
+          Use parcelamento para compromissos divididos em várias parcelas. Parcelamentos geram obrigações mensais em Contas. Não cadastre a mesma parcela manualmente em Contas para evitar duplicidade.
         </div>
         <div className="md:col-span-2"><FieldShell label="Descrição"><input required className={inputClassName} value={values.description} onChange={(event) => setValues({ ...values, description: event.target.value })} /></FieldShell></div>
         <FieldShell label="Valor total"><input min="0" step="0.01" type="number" className={inputClassName} value={values.total_amount} onChange={(event) => setValues({ ...values, total_amount: event.target.value })} /></FieldShell>
@@ -323,6 +390,12 @@ function InstallmentModal({
         <FieldShell label="Categoria"><select className={inputClassName} value={values.category_id} onChange={(event) => setValues({ ...values, category_id: event.target.value })}><option value="">Sem categoria</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></FieldShell>
         <FieldShell label="Pessoa"><select className={inputClassName} value={values.person_id} onChange={(event) => setValues({ ...values, person_id: event.target.value })}><option value="">Sem pessoa</option>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></FieldShell>
         <FieldShell label="Status"><select className={inputClassName} value={values.status} onChange={(event) => setValues({ ...values, status: event.target.value })}>{installmentStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FieldShell>
+        <FieldShell label="Gerar parcelas em Contas?">
+          <select className={inputClassName} value={String(values.generate_accounts)} onChange={(event) => setValues({ ...values, generate_accounts: event.target.value === "true" })}>
+            <option value="false">Não gerar agora</option>
+            <option value="true">Gerar contas mensais</option>
+          </select>
+        </FieldShell>
         <div className="md:col-span-2"><FieldShell label="Notas"><textarea rows={3} className={inputClassName} value={values.notes} onChange={(event) => setValues({ ...values, notes: event.target.value })} /></FieldShell></div>
         <div className="flex justify-end gap-2 md:col-span-2"><ActionButton type="button" variant="secondary" onClick={onClose}>Cancelar</ActionButton><ActionButton type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</ActionButton></div>
       </form>

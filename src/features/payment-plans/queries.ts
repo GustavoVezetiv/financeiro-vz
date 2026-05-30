@@ -40,24 +40,37 @@ export async function deletePaymentPlanItem(client: AppSupabaseClient, id: strin
 
 export async function listPlanSourceData(client: AppSupabaseClient) {
   const [accounts, invoices, installments, reimbursements, incomeSources] = await Promise.all([
-    client.from("accounts_payable").select("id,title,amount,due_date,risk_level").in("status", ["pending", "overdue"]),
+    client.from("accounts_payable").select("id,title,amount,due_date,risk_level,installment_id,is_generated,source_type").in("status", ["pending", "overdue"]),
     client.from("credit_card_invoices").select("id,reference_month,due_date,total_amount,paid_amount").in("status", ["open", "closed", "partial", "overdue"]),
     client.from("installments").select("id,description,installment_amount,due_month,status").eq("status", "active"),
     client.from("reimbursements").select("id,description,expected_amount,received_amount,expected_date,status").in("status", ["expected", "partial", "late"]),
     client.from("income_sources").select("id,name,amount,expected_date,inflow_kind,status").eq("status", "expected"),
   ]);
 
-  return { accounts, invoices, installments, reimbursements, incomeSources };
+  const filteredInstallments = { ...installments };
+
+  if (!accounts.error && !installments.error) {
+    const generatedInstallmentIds = new Set(
+      (accounts.data ?? [])
+        .filter((account) => account.installment_id && account.is_generated && account.source_type === "installment")
+        .map((account) => account.installment_id),
+    );
+
+    filteredInstallments.data = (installments.data ?? []).filter((installment) => !generatedInstallmentIds.has(installment.id));
+  }
+
+  return { accounts, invoices, installments: filteredInstallments, reimbursements, incomeSources };
 }
 
 export async function listSimulationData(client: AppSupabaseClient) {
-  const [incomeSources, reimbursements, installments] = await Promise.all([
+  const [incomeSources, reimbursements, installments, accounts] = await Promise.all([
     client.from("income_sources").select("*"),
     client.from("reimbursements").select("*"),
     client.from("installments").select("*"),
+    client.from("accounts_payable").select("*"),
   ]);
 
-  return { incomeSources, reimbursements, installments };
+  return { incomeSources, reimbursements, installments, accounts };
 }
 
 function toPlanPayload(userId: string | undefined, values: PaymentPlanFormValues): Partial<PaymentPlanRow> {

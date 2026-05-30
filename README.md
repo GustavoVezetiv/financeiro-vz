@@ -525,6 +525,52 @@ Post deploy checklist:
 8. Log out.
 9. Log in again and reload an authenticated dashboard page.
 
+## Status Beta
+
+The project is in private beta validation status. The main product flows are implemented, but every production change should still pass the manual beta checklist before being trusted with real financial decisions.
+
+Before using with real data, validate:
+
+- Login, logout and persistent session.
+- Dashboard calculations and financial separation between real income, reimbursements and third-party money.
+- CRUD flows for categories, people, accounts, income, cards, invoices, transactions, reimbursements, installments, payment plans, purchases, goals, notes and settings.
+- MVP imports only for people, categories, accounts payable and income sources.
+- User isolation through Supabase RLS.
+- Vercel production environment variables and Supabase Auth redirect URLs.
+
+The full checklist lives at:
+
+- [Beta Test Checklist](docs/BETA_TEST_CHECKLIST.md)
+
+## Como Validar Antes de Usar
+
+1. Run all migrations in Supabase in order.
+2. Confirm Vercel has `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `NEXT_PUBLIC_SITE_URL`.
+3. Confirm Supabase Auth Site URL and Redirect URLs point to the deployed app.
+4. Run locally or wait for CI:
+
+```bash
+npm run lint
+npm run build
+```
+
+5. Follow `docs/BETA_TEST_CHECKLIST.md`.
+6. Test with two different users to confirm data isolation.
+7. Only then add real private financial data.
+
+## Limitações Conhecidas do Beta
+
+- Recurrence is intentionally simple and limited to controlled future account generation.
+- Advanced reporting and advanced filters are not part of this beta pass.
+- Imports are enabled only for people, categories, accounts payable and income sources.
+- Import preview rows can be skipped but not edited inline yet.
+- Missing import references are not auto-created.
+- No Open Finance integration.
+- No OCR, PDF parsing or automatic invoice scraping.
+- No AI recommendations or AI classification.
+- No WhatsApp automation.
+- No native mobile app.
+
 ## Testing CRUD
 
 1. Configure `.env.local` with Supabase URL and anon key.
@@ -580,3 +626,4 @@ Initial project documentation:
 - [Roadmap](docs/ROADMAP.md)
 - [Architecture Decisions](docs/DECISIONS.md)
 - [Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md)
+- [Beta Test Checklist](docs/BETA_TEST_CHECKLIST.md)

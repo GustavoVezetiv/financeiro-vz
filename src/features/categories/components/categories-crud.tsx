@@ -8,10 +8,12 @@ import { SectionCard } from "@/components/ui/section-card";
 import {
   ActionButton,
   BooleanBadge,
+  CategoryBadge,
   CrudFeedback,
   FieldShell,
   inputClassName,
   Modal,
+  TitleButton,
 } from "@/features/shared/crud-ui";
 import { categoryTypeOptions, optionLabel } from "@/features/shared/options";
 import type { FeedbackState } from "@/features/shared/types";
@@ -34,6 +36,22 @@ type ModalState =
   | { mode: "create"; category: null }
   | { mode: "edit"; category: CategoryRow }
   | null;
+
+const categoryIconSuggestions = [
+  { label: "Casa", value: "casa" },
+  { label: "Carro", value: "carro" },
+  { label: "Cartão", value: "cartao" },
+  { label: "Comida", value: "comida" },
+  { label: "Mercado", value: "mercado" },
+  { label: "Saúde", value: "saude" },
+  { label: "Estudo", value: "estudo" },
+  { label: "Trabalho", value: "trabalho" },
+  { label: "Lazer", value: "lazer" },
+  { label: "Assinatura", value: "assinatura" },
+  { label: "Família", value: "familia" },
+  { label: "Viagem", value: "viagem" },
+  { label: "Outros", value: "outros" },
+];
 
 export function CategoriesCrud() {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -220,18 +238,16 @@ export function CategoriesCrud() {
               <tbody className="divide-y divide-ink-950/10">
                 {filteredCategories.map((category) => (
                   <tr key={category.id}>
-                    <td className="px-4 py-3 font-medium text-ink-950">{category.name}</td>
+                    <td className="px-4 py-3">
+                      <TitleButton onClick={() => setModal({ mode: "edit", category })}>
+                        {category.name}
+                      </TitleButton>
+                    </td>
                     <td className="px-4 py-3 text-ink-600">
                       {optionLabel(categoryTypeOptions, category.type)}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-2 text-ink-600">
-                        <span
-                          className="h-4 w-4 rounded-full border border-ink-950/10"
-                          style={{ backgroundColor: category.color ?? "#e2e8f0" }}
-                        />
-                        {category.color ?? "-"}
-                      </span>
+                      <CategoryBadge category={category} />
                     </td>
                     <td className="px-4 py-3 text-ink-600">{category.icon ?? "-"}</td>
                     <td className="px-4 py-3">
@@ -337,9 +353,21 @@ function CategoryModal({
           <input
             value={values.icon}
             onChange={(event) => setValues({ ...values, icon: event.target.value })}
-            placeholder="Ex.: home, wallet, repeat"
+            placeholder="Ex.: casa, cartao, mercado"
             className={inputClassName}
           />
+          <div className="mt-2 flex flex-wrap gap-2">
+            {categoryIconSuggestions.map((suggestion) => (
+              <button
+                key={suggestion.value}
+                type="button"
+                onClick={() => setValues({ ...values, icon: suggestion.value })}
+                className="rounded-full border border-ink-950/10 bg-white px-2.5 py-1 text-xs font-medium text-ink-700 transition hover:border-mint-500 hover:text-mint-600"
+              >
+                {suggestion.label}
+              </button>
+            ))}
+          </div>
         </FieldShell>
 
         <FieldShell label="Categoria padrão">
@@ -376,4 +404,3 @@ function CategoryModal({
     </Modal>
   );
 }
-

@@ -8,7 +8,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import { createNote, deleteNote, listNotes, updateNote } from "@/features/notes/queries";
 import { emptyNoteForm, noteEntityTypeOptions, noteToFormValues, type NoteFormValues, type NoteRow } from "@/features/notes/types";
-import { ActionButton, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
+import { ActionButton, BulkActionsBar, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge, TitleButton } from "@/features/shared/crud-ui";
 import { formatDate } from "@/features/shared/format";
 import { optionLabel } from "@/features/shared/options";
 import type { FeedbackState } from "@/features/shared/types";
@@ -21,10 +21,12 @@ export function NotesCrud() {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -97,6 +99,39 @@ export function NotesCrud() {
     }
   }
 
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    if (!window.confirm(`Tem certeza que deseja excluir ${ids.length} itens? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setDeletingSelected(true);
+    setFeedback(null);
+
+    try {
+      const client = createClient();
+      const results = await Promise.all(ids.map((id) => deleteNote(client, id)));
+      const failed = results.find((result) => result.error);
+
+      if (failed?.error) {
+        console.error("Erro técnico ao excluir anotações selecionadas:", failed.error);
+        setFeedback({ type: "error", message: "Não foi possível excluir todos os itens selecionados." });
+        return;
+      }
+
+      setSelectedIds(new Set());
+      setFeedback({ type: "success", message: `${ids.length} anotação(ões) excluída(s).` });
+      await loadData();
+    } catch (error) {
+      console.error("Erro técnico ao excluir anotações selecionadas:", error);
+      setFeedback({ type: "error", message: "Não foi possível excluir os itens selecionados." });
+    } finally {
+      setDeletingSelected(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -127,12 +162,40 @@ export function NotesCrud() {
           <EmptyState title="Nenhuma anotação" description="Crie anotações simples para registrar lembretes, decisões e combinados financeiros." />
         ) : (
           <div className="grid gap-3">
+            <BulkActionsBar selectedCount={selectedIds.size} deleting={deletingSelected} onClear={() => setSelectedIds(new Set())} onDelete={() => void handleBulkDelete()} />
+            <label className="flex items-center gap-2 text-sm font-medium text-ink-700">
+              <input
+                type="checkbox"
+                checked={filtered.length > 0 && filtered.every((note) => selectedIds.has(note.id))}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    setSelectedIds(new Set([...selectedIds, ...filtered.map((note) => note.id)]));
+                    return;
+                  }
+                  const next = new Set(selectedIds);
+                  filtered.forEach((note) => next.delete(note.id));
+                  setSelectedIds(next);
+                }}
+              />
+              Selecionar anotações filtradas
+            </label>
             {filtered.map((note) => (
               <article key={note.id} className="rounded-lg border border-ink-950/10 bg-white p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(note.id)}
+                    onChange={(event) => {
+                      const next = new Set(selectedIds);
+                      if (event.target.checked) next.add(note.id);
+                      else next.delete(note.id);
+                      setSelectedIds(next);
+                    }}
+                    aria-label={`Selecionar ${note.title || "anotação"}`}
+                  />
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-ink-950">{note.title || "Sem título"}</h3>
+                      <TitleButton onClick={() => setModal({ mode: "edit", item: note })}>{note.title || "Sem título"}</TitleButton>
                       {note.pinned ? <TextBadge tone="warning">Fixada</TextBadge> : null}
                       <TextBadge>{optionLabel(noteEntityTypeOptions, note.entity_type)}</TextBadge>
                     </div>

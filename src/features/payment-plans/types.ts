@@ -35,7 +35,7 @@ export type PaymentPlanItemFormValues = {
 };
 
 export type PlanSourceData = {
-  accounts: Pick<AccountPayable, "id" | "title" | "amount" | "due_date" | "risk_level">[];
+  accounts: Pick<AccountPayable, "id" | "title" | "amount" | "due_date" | "risk_level" | "installment_id" | "is_generated" | "source_type">[];
   invoices: Pick<CreditCardInvoice, "id" | "reference_month" | "due_date" | "total_amount" | "paid_amount">[];
   installments: Pick<Installment, "id" | "description" | "installment_amount" | "due_month" | "status">[];
   reimbursements: Pick<Reimbursement, "id" | "description" | "expected_amount" | "received_amount" | "expected_date" | "status">[];

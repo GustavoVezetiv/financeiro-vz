@@ -1,4 +1,5 @@
 import type {
+  AccountCardPaymentFormValues,
   AccountPayableFormValues,
   AccountPayableRow,
 } from "@/features/accounts-payable/types";
@@ -31,12 +32,22 @@ export async function updateAccountPayable(
   id: string,
   values: AccountPayableFormValues,
 ) {
-  return client
+  const result = await client
     .from("accounts_payable")
     .update(toPayload(undefined, values))
     .eq("id", id)
     .select("*")
     .single();
+
+  if (!result.error && result.data?.installment_id) {
+    const syncResult = await syncInstallmentProgressFromAccounts(client, result.data.installment_id);
+
+    if (syncResult.error) {
+      console.error("Erro técnico ao sincronizar progresso do parcelamento:", syncResult.error);
+    }
+  }
+
+  return result;
 }
 
 export async function deleteAccountPayable(client: AppSupabaseClient, id: string) {
@@ -122,6 +133,9 @@ export async function generateRecurringAccounts(
       recurrence_start_date: account.recurrence_start_date ?? account.due_date,
       recurrence_end_date: account.recurrence_end_date,
       recurrence_parent_id: parentId,
+      source_type: "recurring",
+      source_id: parentId,
+      is_generated: true,
       paid_at: null,
     }));
 
@@ -165,16 +179,93 @@ export async function generateRecurringAccounts(
 }
 
 export async function listAccountSupportData(client: AppSupabaseClient) {
-  const [categories, people] = await Promise.all([
+  const [categories, people, installments, cards, invoices] = await Promise.all([
     client
       .from("categories")
       .select("id,name,type,color,icon")
       .in("type", ["expense", "debt", "reimbursement", "other"])
       .order("name", { ascending: true }),
     client.from("people").select("id,name").order("name", { ascending: true }),
+    client.from("installments").select("id,description,installment_total,installment_count").order("description", { ascending: true }),
+    client.from("credit_cards").select("id,name,issuer").eq("is_active", true).order("name", { ascending: true }),
+    client.from("credit_card_invoices").select("id,credit_card_id,reference_month,due_date").in("status", ["open", "closed", "partial"]).order("due_date", { ascending: false }),
   ]);
 
-  return { categories, people };
+  return { categories, people, installments, cards, invoices };
+}
+
+export async function payAccountWithCard(
+  client: AppSupabaseClient,
+  userId: string,
+  account: AccountPayableRow,
+  values: AccountCardPaymentFormValues,
+) {
+  const amount = Number(values.amount || 0);
+  const transactionResult = await client
+    .from("credit_card_transactions")
+    .insert({
+      user_id: userId,
+      credit_card_id: values.credit_card_id,
+      invoice_id: values.invoice_id,
+      category_id: account.category_id,
+      person_id: account.person_id,
+      description: values.description.trim(),
+      amount,
+      transaction_date: values.transaction_date,
+      ownership_type: "personal",
+      is_reimbursable: false,
+      reimbursement_status: "not_applicable",
+      notes: `Gerado a partir da conta: ${account.title}`,
+    })
+    .select("*")
+    .single();
+
+  if (transactionResult.error) {
+    console.error("Erro técnico ao criar lançamento no cartão:", transactionResult.error);
+    return { data: null, error: { message: "Não foi possível criar o lançamento na fatura." } };
+  }
+
+  const accountResult = await client
+    .from("accounts_payable")
+    .update({
+      status: "paid",
+      paid_at: new Date().toISOString(),
+      payment_method_planned: "credit_card",
+      paid_with_credit_card: true,
+      credit_card_transaction_id: transactionResult.data.id,
+      credit_card_invoice_id: values.invoice_id,
+    })
+    .eq("id", account.id)
+    .select("*")
+    .single();
+
+  if (accountResult.error) {
+    console.error("Erro técnico ao marcar conta como paga por cartão:", accountResult.error);
+    return { data: null, error: { message: "Lançamento criado, mas não foi possível atualizar a conta." } };
+  }
+
+  const invoiceResult = await client
+    .from("credit_card_invoices")
+    .select("total_amount")
+    .eq("id", values.invoice_id)
+    .single();
+
+  if (invoiceResult.error) {
+    console.error("Erro técnico ao consultar fatura:", invoiceResult.error);
+    return { data: accountResult.data, error: { message: "Conta movida, mas não foi possível atualizar o total da fatura." } };
+  }
+
+  const invoiceUpdateResult = await client
+    .from("credit_card_invoices")
+    .update({ total_amount: Number(invoiceResult.data.total_amount || 0) + amount })
+    .eq("id", values.invoice_id);
+
+  if (invoiceUpdateResult.error) {
+    console.error("Erro técnico ao atualizar total da fatura:", invoiceUpdateResult.error);
+    return { data: accountResult.data, error: { message: "Conta movida, mas não foi possível atualizar o total da fatura." } };
+  }
+
+  return { data: accountResult.data, error: null };
 }
 
 function toPayload(
@@ -191,6 +282,7 @@ function toPayload(
     person_id: values.person_id || null,
     priority: values.priority,
     status: values.status,
+    paid_at: values.status === "paid" ? new Date().toISOString() : null,
     payment_method_planned: values.payment_method_planned,
     can_delay: values.can_delay,
     delay_risk: values.delay_risk,
@@ -207,6 +299,38 @@ function toPayload(
         }
       : null,
   };
+}
+
+async function syncInstallmentProgressFromAccounts(client: AppSupabaseClient, installmentId: string) {
+  const [installmentResult, accountsResult] = await Promise.all([
+    client.from("installments").select("id,installment_total,installment_count").eq("id", installmentId).single(),
+    client
+      .from("accounts_payable")
+      .select("installment_number,status")
+      .eq("installment_id", installmentId)
+      .eq("is_generated", true),
+  ]);
+
+  if (installmentResult.error) return { error: installmentResult.error };
+  if (accountsResult.error) return { error: accountsResult.error };
+
+  const total = Number(installmentResult.data.installment_total ?? installmentResult.data.installment_count);
+  const paidNumbers = (accountsResult.data ?? [])
+    .filter((account) => account.status === "paid" && account.installment_number)
+    .map((account) => Number(account.installment_number))
+    .sort((a, b) => a - b);
+  const highestPaid = paidNumbers.at(-1) ?? 0;
+  const nextInstallment = Math.min(Math.max(highestPaid + 1, 1), total);
+  const status = highestPaid >= total ? "finished" : "active";
+
+  return client
+    .from("installments")
+    .update({
+      current_installment: nextInstallment,
+      installment_number: nextInstallment,
+      status,
+    })
+    .eq("id", installmentId);
 }
 
 function isRecurrenceFrequency(value: string | null): value is "monthly" | "weekly" | "yearly" {

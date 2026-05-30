@@ -8,12 +8,14 @@ import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import {
   ActionButton,
+  BulkActionsBar,
   CategoryBadge,
   CrudFeedback,
   FieldShell,
   inputClassName,
   Modal,
   TextBadge,
+  TitleButton,
 } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import {
@@ -60,8 +62,10 @@ export function IncomeSourcesCrud() {
   const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const periodIncome = useMemo(() => {
     return incomeSources.filter((income) =>
@@ -250,6 +254,39 @@ export function IncomeSourcesCrud() {
     await loadIncomeSources();
   }
 
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    if (!window.confirm(`Tem certeza que deseja excluir ${ids.length} itens? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setDeletingSelected(true);
+    setFeedback(null);
+
+    try {
+      const client = createClient();
+      const results = await Promise.all(ids.map((id) => deleteIncomeSource(client, id)));
+      const failed = results.find((result) => result.error);
+
+      if (failed?.error) {
+        console.error("Erro técnico ao excluir receitas selecionadas:", failed.error);
+        setFeedback({ type: "error", message: "Não foi possível excluir todos os itens selecionados." });
+        return;
+      }
+
+      setSelectedIds(new Set());
+      setFeedback({ type: "success", message: `${ids.length} entrada(s) excluída(s).` });
+      await loadIncomeSources();
+    } catch (error) {
+      console.error("Erro técnico ao excluir receitas selecionadas:", error);
+      setFeedback({ type: "error", message: "Não foi possível excluir os itens selecionados." });
+    } finally {
+      setDeletingSelected(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -311,13 +348,23 @@ export function IncomeSourcesCrud() {
         ) : filteredIncome.length === 0 ? (
           <EmptyState title="Nenhuma entrada no período" description="Ajuste o período ou os filtros para ver outras receitas." />
         ) : (
+          <>
+          <BulkActionsBar
+            selectedCount={selectedIds.size}
+            deleting={deletingSelected}
+            onClear={() => setSelectedIds(new Set())}
+            onDelete={() => void handleBulkDelete()}
+          />
           <IncomeTable
             incomeSources={filteredIncome}
             categories={categories}
             people={people}
             onEdit={(income) => setModal({ mode: "edit", income })}
             onDelete={(income) => void handleDelete(income)}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
           />
+          </>
         )}
       </SectionCard>
 
@@ -341,18 +388,50 @@ function IncomeTable({
   people,
   onEdit,
   onDelete,
+  selectedIds,
+  onSelectionChange,
 }: {
   incomeSources: IncomeSourceRow[];
   categories: IncomeCategory[];
   people: IncomePerson[];
   onEdit: (income: IncomeSourceRow) => void;
   onDelete: (income: IncomeSourceRow) => void;
+  selectedIds: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
 }) {
+  const allSelected = incomeSources.length > 0 && incomeSources.every((income) => selectedIds.has(income.id));
+
+  function toggleAll(checked: boolean) {
+    if (checked) {
+      onSelectionChange(new Set([...selectedIds, ...incomeSources.map((income) => income.id)]));
+      return;
+    }
+
+    const next = new Set(selectedIds);
+    incomeSources.forEach((income) => next.delete(income.id));
+    onSelectionChange(next);
+  }
+
+  function toggleOne(id: string, checked: boolean) {
+    const next = new Set(selectedIds);
+    if (checked) next.add(id);
+    else next.delete(id);
+    onSelectionChange(next);
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600">
           <tr>
+            <th className="px-4 py-3">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(event) => toggleAll(event.target.checked)}
+                aria-label="Selecionar todas as receitas filtradas"
+              />
+            </th>
             <th className="px-4 py-3">Data</th>
             <th className="px-4 py-3">Fonte</th>
             <th className="px-4 py-3">Valor</th>
@@ -367,9 +446,17 @@ function IncomeTable({
         <tbody className="divide-y divide-ink-950/10">
           {incomeSources.map((income) => (
             <tr key={income.id}>
+              <td className="px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(income.id)}
+                  onChange={(event) => toggleOne(income.id, event.target.checked)}
+                  aria-label={`Selecionar ${income.name}`}
+                />
+              </td>
               <td className="px-4 py-3 text-ink-600">{formatDate(income.expected_date)}</td>
               <td className="px-4 py-3">
-                <p className="font-medium text-ink-950">{income.name}</p>
+                <TitleButton onClick={() => onEdit(income)}>{income.name}</TitleButton>
                 <p className="text-xs text-ink-600">{income.description ?? "-"}</p>
               </td>
               <td className="px-4 py-3 font-medium text-ink-950">{formatCurrency(Number(income.amount))}</td>

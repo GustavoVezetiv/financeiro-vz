@@ -8,7 +8,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import { createPlannedPurchase, deletePlannedPurchase, listPlannedPurchases, listPlannedPurchaseSupportData, updatePlannedPurchase } from "@/features/planned-purchases/queries";
 import { decisionStatusOptions, emptyPlannedPurchaseForm, plannedPurchaseToFormValues, type PlannedPurchaseFormValues, type PlannedPurchaseRow, type PlannedPurchaseSupportData } from "@/features/planned-purchases/types";
-import { ActionButton, CategoryBadge, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge } from "@/features/shared/crud-ui";
+import { ActionButton, BulkActionsBar, CategoryBadge, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge, TitleButton } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { optionLabel, paymentMethodOptions, priorityOptions } from "@/features/shared/options";
 import { PeriodFilter } from "@/features/shared/period-filter";
@@ -30,6 +30,8 @@ export function PlannedPurchasesCrud() {
   const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [modal, setModal] = useState<ModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [deletingSelected, setDeletingSelected] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -140,6 +142,39 @@ export function PlannedPurchasesCrud() {
     }
   }
 
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    if (!window.confirm(`Tem certeza que deseja excluir ${ids.length} itens? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setDeletingSelected(true);
+    setFeedback(null);
+
+    try {
+      const client = createClient();
+      const results = await Promise.all(ids.map((id) => deletePlannedPurchase(client, id)));
+      const failed = results.find((result) => result.error);
+
+      if (failed?.error) {
+        console.error("Erro técnico ao excluir compras selecionadas:", failed.error);
+        setFeedback({ type: "error", message: "Não foi possível excluir todos os itens selecionados." });
+        return;
+      }
+
+      setSelectedIds(new Set());
+      setFeedback({ type: "success", message: `${ids.length} compra(s) excluída(s).` });
+      await loadData();
+    } catch (error) {
+      console.error("Erro técnico ao excluir compras selecionadas:", error);
+      setFeedback({ type: "error", message: "Não foi possível excluir os itens selecionados." });
+    } finally {
+      setDeletingSelected(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -175,10 +210,33 @@ export function PlannedPurchasesCrud() {
         ) : filtered.length === 0 ? (
           <EmptyState title="Nenhuma compra no período" description="Ajuste o período ou os filtros para ver outras compras planejadas." />
         ) : (
+          <>
+          <BulkActionsBar
+            selectedCount={selectedIds.size}
+            deleting={deletingSelected}
+            onClear={() => setSelectedIds(new Set())}
+            onDelete={() => void handleBulkDelete()}
+          />
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600">
                 <tr>
+                  <th className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={filtered.length > 0 && filtered.every((item) => selectedIds.has(item.id))}
+                      onChange={(event) => {
+                        if (event.target.checked) {
+                          setSelectedIds(new Set([...selectedIds, ...filtered.map((item) => item.id)]));
+                          return;
+                        }
+                        const next = new Set(selectedIds);
+                        filtered.forEach((item) => next.delete(item.id));
+                        setSelectedIds(next);
+                      }}
+                      aria-label="Selecionar todas as compras filtradas"
+                    />
+                  </th>
                   <th className="px-4 py-3">Compra</th>
                   <th className="px-4 py-3">Valor</th>
                   <th className="px-4 py-3">Categoria</th>
@@ -192,7 +250,20 @@ export function PlannedPurchasesCrud() {
                 {filtered.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-3">
-                      <p className="font-medium text-ink-950">{item.title}</p>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(item.id)}
+                        onChange={(event) => {
+                          const next = new Set(selectedIds);
+                          if (event.target.checked) next.add(item.id);
+                          else next.delete(item.id);
+                          setSelectedIds(next);
+                        }}
+                        aria-label={`Selecionar ${item.title}`}
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <TitleButton onClick={() => setModal({ mode: "edit", item })}>{item.title}</TitleButton>
                       <p className="text-xs text-ink-600">{item.description ?? "Sem descrição"}</p>
                     </td>
                     <td className="px-4 py-3 text-ink-950">{formatCurrency(Number(item.estimated_amount))}</td>
@@ -211,6 +282,7 @@ export function PlannedPurchasesCrud() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </SectionCard>
 

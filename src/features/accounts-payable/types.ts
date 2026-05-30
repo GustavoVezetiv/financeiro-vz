@@ -1,4 +1,4 @@
-import type { AccountPayable, Category, Person, RiskLevel } from "@/lib/supabase/types";
+import type { AccountPayable, Category, CreditCard, CreditCardInvoice, Installment, Person, RiskLevel } from "@/lib/supabase/types";
 
 export type AccountRecurrenceFrequency = "monthly" | "weekly" | "yearly";
 
@@ -25,6 +25,17 @@ export type AccountPayableFormValues = {
 export type AccountPayableRow = AccountPayable;
 export type AccountCategory = Pick<Category, "id" | "name" | "type" | "color" | "icon">;
 export type AccountPerson = Pick<Person, "id" | "name">;
+export type AccountInstallment = Pick<Installment, "id" | "description" | "installment_total" | "installment_count">;
+export type AccountCreditCard = Pick<CreditCard, "id" | "name" | "issuer">;
+export type AccountInvoice = Pick<CreditCardInvoice, "id" | "credit_card_id" | "reference_month" | "due_date">;
+
+export type AccountCardPaymentFormValues = {
+  credit_card_id: string;
+  invoice_id: string;
+  transaction_date: string;
+  description: string;
+  amount: string;
+};
 
 export const emptyAccountForm: AccountPayableFormValues = {
   title: "",

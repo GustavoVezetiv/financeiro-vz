@@ -8,12 +8,14 @@ import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import {
   ActionButton,
+  BulkActionsBar,
   CategoryBadge,
   CrudFeedback,
   FieldShell,
   inputClassName,
   Modal,
   TextBadge,
+  TitleButton,
 } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate, todayISO } from "@/features/shared/format";
 import {
@@ -31,12 +33,17 @@ import {
   generateRecurringAccounts,
   listAccountsPayable,
   listAccountSupportData,
+  payAccountWithCard,
   updateAccountPayable,
 } from "@/features/accounts-payable/queries";
 import {
   accountToFormValues,
   emptyAccountForm,
+  type AccountCardPaymentFormValues,
   type AccountCategory,
+  type AccountCreditCard,
+  type AccountInvoice,
+  type AccountInstallment,
   type AccountPayableFormValues,
   type AccountPayableRow,
   type AccountPerson,
@@ -47,22 +54,30 @@ type ModalState =
   | { mode: "create"; account: null }
   | { mode: "edit"; account: AccountPayableRow }
   | null;
+type CardPaymentModalState = { account: AccountPayableRow } | null;
 
 export function AccountsPayableCrud() {
   const [accounts, setAccounts] = useState<AccountPayableRow[]>([]);
   const [categories, setCategories] = useState<AccountCategory[]>([]);
   const [people, setPeople] = useState<AccountPerson[]>([]);
+  const [installments, setInstallments] = useState<AccountInstallment[]>([]);
+  const [cards, setCards] = useState<AccountCreditCard[]>([]);
+  const [invoices, setInvoices] = useState<AccountInvoice[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [personFilter, setPersonFilter] = useState("all");
   const [period, setPeriod] = useState(createDefaultPeriodValue());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
+  const [cardPaymentModal, setCardPaymentModal] = useState<CardPaymentModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const periodAccounts = useMemo(() => {
     return accounts.filter((account) => isDateInPeriod(account.due_date, period));
@@ -79,15 +94,19 @@ export function AccountsPayableCrud() {
       const matchesStatus = statusFilter === "all" || account.status === statusFilter;
       const matchesPriority = priorityFilter === "all" || account.priority === priorityFilter;
       const matchesCategory = categoryFilter === "all" || account.category_id === categoryFilter;
+      const matchesPerson =
+        personFilter === "all" ||
+        (personFilter === "none" ? !account.person_id : account.person_id === personFilter);
 
       return (
         matchesSearch &&
         matchesStatus &&
         matchesPriority &&
-        matchesCategory
+        matchesCategory &&
+        matchesPerson
       );
     });
-  }, [categoryFilter, periodAccounts, priorityFilter, search, statusFilter]);
+  }, [categoryFilter, periodAccounts, personFilter, priorityFilter, search, statusFilter]);
 
   const summary = useMemo(() => {
     const today = todayISO();
@@ -159,9 +178,25 @@ export function AccountsPayableCrud() {
         return;
       }
 
+      if (support.installments.error) {
+        setFeedback({ type: "error", message: support.installments.error.message });
+        return;
+      }
+      if (support.cards.error) {
+        setFeedback({ type: "error", message: support.cards.error.message });
+        return;
+      }
+      if (support.invoices.error) {
+        setFeedback({ type: "error", message: support.invoices.error.message });
+        return;
+      }
+
       setAccounts(accountsResult.data ?? []);
       setCategories(support.categories.data ?? []);
       setPeople(support.people.data ?? []);
+      setInstallments(support.installments.data ?? []);
+      setCards(support.cards.data ?? []);
+      setInvoices(support.invoices.data ?? []);
     } catch (error) {
       setFeedback({
         type: "error",
@@ -320,6 +355,75 @@ export function AccountsPayableCrud() {
     await loadAccounts();
   }
 
+  async function handlePayWithCard(values: AccountCardPaymentFormValues) {
+    if (!cardPaymentModal || !userId) return;
+    const amount = Number(values.amount);
+
+    if (!values.credit_card_id || !values.invoice_id || !values.transaction_date || !values.description.trim()) {
+      setFeedback({ type: "error", message: "Cartão, fatura, data e descrição são obrigatórios." });
+      return;
+    }
+    if (Number.isNaN(amount) || amount < 0) {
+      setFeedback({ type: "error", message: "O valor deve ser maior ou igual a zero." });
+      return;
+    }
+
+    setSaving(true);
+    setFeedback(null);
+
+    try {
+      const result = await payAccountWithCard(createClient(), userId, cardPaymentModal.account, values);
+
+      if (result.error) {
+        setFeedback({ type: "error", message: result.error.message });
+        return;
+      }
+
+      setFeedback({ type: "success", message: "Conta movida para a fatura selecionada." });
+      setCardPaymentModal(null);
+      await loadAccounts();
+    } catch (error) {
+      console.error("Erro técnico ao pagar conta com cartão:", error);
+      setFeedback({ type: "error", message: "Não foi possível mover a conta para o cartão." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+
+    if (ids.length === 0) return;
+
+    if (!window.confirm(`Tem certeza que deseja excluir ${ids.length} itens? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setDeletingSelected(true);
+    setFeedback(null);
+
+    try {
+      const client = createClient();
+      const results = await Promise.all(ids.map((id) => deleteAccountPayable(client, id)));
+      const failed = results.find((result) => result.error);
+
+      if (failed?.error) {
+        console.error("Erro técnico ao excluir contas selecionadas:", failed.error);
+        setFeedback({ type: "error", message: "Não foi possível excluir todos os itens selecionados." });
+        return;
+      }
+
+      setSelectedIds(new Set());
+      setFeedback({ type: "success", message: `${ids.length} conta(s) excluída(s).` });
+      await loadAccounts();
+    } catch (error) {
+      console.error("Erro técnico ao excluir contas selecionadas:", error);
+      setFeedback({ type: "error", message: "Não foi possível excluir os itens selecionados." });
+    } finally {
+      setDeletingSelected(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -331,6 +435,12 @@ export function AccountsPayableCrud() {
 
       <CrudFeedback feedback={feedback} />
 
+      <SectionCard title="Parcelamentos em Contas" description="Parcelamentos geram obrigações mensais em Contas.">
+        <p className="text-sm leading-6 text-ink-600">
+          As parcelas geradas aparecem aqui como contas do mês com origem Parcelamento. Não cadastre a mesma parcela manualmente em Contas para evitar duplicidade.
+        </p>
+      </SectionCard>
+
       <PeriodFilter value={period} onChange={setPeriod} />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -341,7 +451,7 @@ export function AccountsPayableCrud() {
       </section>
 
       <SectionCard title="Filtros" description="Refine por status, prioridade e categoria.">
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar" className={inputClassName} />
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className={inputClassName}>
             <option value="all">Todos status</option>
@@ -355,6 +465,11 @@ export function AccountsPayableCrud() {
             <option value="all">Todas categorias</option>
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
           </select>
+          <select value={personFilter} onChange={(event) => setPersonFilter(event.target.value)} className={inputClassName}>
+            <option value="all">Todas as pessoas</option>
+            <option value="none">Sem pessoa</option>
+            {people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+          </select>
         </div>
       </SectionCard>
 
@@ -366,15 +481,27 @@ export function AccountsPayableCrud() {
         ) : filteredAccounts.length === 0 ? (
           <EmptyState title="Nenhuma conta no período" description="Ajuste o período ou os filtros para ver outras contas." />
         ) : (
+          <>
+          <BulkActionsBar
+            selectedCount={selectedIds.size}
+            deleting={deletingSelected}
+            onClear={() => setSelectedIds(new Set())}
+            onDelete={() => void handleBulkDelete()}
+          />
           <AccountsTable
             accounts={filteredAccounts}
             categories={categories}
             people={people}
+            installments={installments}
             onEdit={(account) => setModal({ mode: "edit", account })}
             onDelete={(account) => void handleDelete(account)}
             onGenerate={(account) => void handleGenerateRecurring(account)}
+            onPayWithCard={(account) => setCardPaymentModal({ account })}
             generatingId={generatingId}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
           />
+          </>
         )}
       </SectionCard>
 
@@ -388,6 +515,16 @@ export function AccountsPayableCrud() {
           onClose={() => setModal(null)}
         />
       ) : null}
+      {cardPaymentModal ? (
+        <CardPaymentModal
+          account={cardPaymentModal.account}
+          cards={cards}
+          invoices={invoices}
+          saving={saving}
+          onClose={() => setCardPaymentModal(null)}
+          onSubmit={(values) => void handlePayWithCard(values)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -396,29 +533,66 @@ function AccountsTable({
   accounts,
   categories,
   people,
+  installments,
   onEdit,
   onDelete,
   onGenerate,
+  onPayWithCard,
   generatingId,
+  selectedIds,
+  onSelectionChange,
 }: {
   accounts: AccountPayableRow[];
   categories: AccountCategory[];
   people: AccountPerson[];
+  installments: AccountInstallment[];
   onEdit: (account: AccountPayableRow) => void;
   onDelete: (account: AccountPayableRow) => void;
   onGenerate: (account: AccountPayableRow) => void;
+  onPayWithCard: (account: AccountPayableRow) => void;
   generatingId: string | null;
+  selectedIds: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
 }) {
+  const allSelected = accounts.length > 0 && accounts.every((account) => selectedIds.has(account.id));
+
+  function toggleAll(checked: boolean) {
+    if (checked) {
+      onSelectionChange(new Set([...selectedIds, ...accounts.map((account) => account.id)]));
+      return;
+    }
+
+    const next = new Set(selectedIds);
+    accounts.forEach((account) => next.delete(account.id));
+    onSelectionChange(next);
+  }
+
+  function toggleOne(id: string, checked: boolean) {
+    const next = new Set(selectedIds);
+    if (checked) next.add(id);
+    else next.delete(id);
+    onSelectionChange(next);
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600">
           <tr>
+            <th className="px-4 py-3">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(event) => toggleAll(event.target.checked)}
+                aria-label="Selecionar todas as contas filtradas"
+              />
+            </th>
             <th className="px-4 py-3">Vencimento</th>
             <th className="px-4 py-3">Conta</th>
             <th className="px-4 py-3">Valor</th>
             <th className="px-4 py-3">Categoria</th>
             <th className="px-4 py-3">Pessoa</th>
+            <th className="px-4 py-3">Origem</th>
             <th className="px-4 py-3">Prioridade</th>
             <th className="px-4 py-3">Recorrência</th>
             <th className="px-4 py-3">Status</th>
@@ -428,14 +602,38 @@ function AccountsTable({
         <tbody className="divide-y divide-ink-950/10">
           {accounts.map((account) => (
             <tr key={account.id}>
+              <td className="px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(account.id)}
+                  onChange={(event) => toggleOne(account.id, event.target.checked)}
+                  aria-label={`Selecionar ${account.title}`}
+                />
+              </td>
               <td className="px-4 py-3 text-ink-600">{formatDate(account.due_date)}</td>
               <td className="px-4 py-3">
-                <p className="font-medium text-ink-950">{account.title}</p>
+                <TitleButton onClick={() => onEdit(account)}>{account.title}</TitleButton>
+                {account.installment_id ? (
+                  <p className="text-xs font-medium text-mint-600">
+                    {getInstallmentOriginLabel(account, installments)}
+                  </p>
+                ) : null}
                 <p className="text-xs text-ink-600">{account.description ?? "-"}</p>
               </td>
               <td className="px-4 py-3 font-medium text-ink-950">{formatCurrency(Number(account.amount))}</td>
               <td className="px-4 py-3"><CategoryBadge category={categories.find((category) => category.id === account.category_id)} /></td>
               <td className="px-4 py-3 text-ink-600">{people.find((person) => person.id === account.person_id)?.name ?? "-"}</td>
+              <td className="px-4 py-3">
+                {account.installment_id ? (
+                  <TextBadge tone="info">
+                    {getInstallmentOriginLabel(account, installments)}
+                  </TextBadge>
+                ) : account.is_generated ? (
+                  <TextBadge tone="neutral">Gerada</TextBadge>
+                ) : (
+                  <span className="text-ink-500">Manual</span>
+                )}
+              </td>
               <td className="px-4 py-3 text-ink-600">{optionLabel(priorityOptions, account.priority)}</td>
               <td className="px-4 py-3">
                 {account.is_recurring ? (
@@ -457,6 +655,9 @@ function AccountsTable({
                     >
                       {generatingId === account.id ? "Gerando..." : "Gerar próximas"}
                     </ActionButton>
+                  ) : null}
+                  {account.status !== "paid" ? (
+                    <ActionButton variant="secondary" onClick={() => onPayWithCard(account)}>Pagar com cartão</ActionButton>
                   ) : null}
                   <ActionButton variant="secondary" onClick={() => onEdit(account)}>Editar</ActionButton>
                   <ActionButton variant="danger" onClick={() => onDelete(account)}>Excluir</ActionButton>
@@ -618,4 +819,106 @@ function AccountModal({
       </form>
     </Modal>
   );
+}
+
+function CardPaymentModal({
+  account,
+  cards,
+  invoices,
+  saving,
+  onClose,
+  onSubmit,
+}: {
+  account: AccountPayableRow;
+  cards: AccountCreditCard[];
+  invoices: AccountInvoice[];
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (values: AccountCardPaymentFormValues) => void;
+}) {
+  const [values, setValues] = useState<AccountCardPaymentFormValues>({
+    credit_card_id: "",
+    invoice_id: "",
+    transaction_date: todayISO(),
+    description: account.title,
+    amount: String(account.amount),
+  });
+  const filteredInvoices = values.credit_card_id
+    ? invoices.filter((invoice) => invoice.credit_card_id === values.credit_card_id)
+    : invoices;
+
+  return (
+    <Modal
+      title="Pagar com cartão"
+      description="Pagar com cartão move esta obrigação para a fatura selecionada."
+      onClose={onClose}
+    >
+      <form
+        className="grid gap-4 md:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit(values);
+        }}
+      >
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 md:col-span-2">
+          A conta será marcada como paga por cartão e deixará de aparecer como pendente no caixa.
+          A fatura escolhida passa a carregar essa pressão financeira.
+        </p>
+        <FieldShell label="Cartão">
+          <select
+            required
+            className={inputClassName}
+            value={values.credit_card_id}
+            onChange={(event) => setValues({ ...values, credit_card_id: event.target.value, invoice_id: "" })}
+          >
+            <option value="">Selecione</option>
+            {cards.map((card) => (
+              <option key={card.id} value={card.id}>{card.name}{card.issuer ? ` - ${card.issuer}` : ""}</option>
+            ))}
+          </select>
+        </FieldShell>
+        <FieldShell label="Fatura">
+          <select required className={inputClassName} value={values.invoice_id} onChange={(event) => setValues({ ...values, invoice_id: event.target.value })}>
+            <option value="">Selecione</option>
+            {filteredInvoices.map((invoice) => (
+              <option key={invoice.id} value={invoice.id}>
+                {invoice.reference_month.slice(0, 7)} - vence {formatDate(invoice.due_date)}
+              </option>
+            ))}
+          </select>
+        </FieldShell>
+        <FieldShell label="Data">
+          <input type="date" required className={inputClassName} value={values.transaction_date} onChange={(event) => setValues({ ...values, transaction_date: event.target.value })} />
+        </FieldShell>
+        <FieldShell label="Valor">
+          <input min="0" step="0.01" type="number" required className={inputClassName} value={values.amount} onChange={(event) => setValues({ ...values, amount: event.target.value })} />
+        </FieldShell>
+        <div className="md:col-span-2">
+          <FieldShell label="Descrição">
+            <input required className={inputClassName} value={values.description} onChange={(event) => setValues({ ...values, description: event.target.value })} />
+          </FieldShell>
+        </div>
+        <div className="flex justify-end gap-2 md:col-span-2">
+          <ActionButton type="button" variant="secondary" onClick={onClose}>Cancelar</ActionButton>
+          <ActionButton type="submit" disabled={saving}>{saving ? "Movendo..." : "Confirmar"}</ActionButton>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function getInstallmentOriginLabel(account: AccountPayableRow, installments: AccountInstallment[]) {
+  const installment = installments.find((item) => item.id === account.installment_id);
+  const total = installment?.installment_total ?? installment?.installment_count;
+  const installmentNumber = account.installment_number;
+
+  if (installmentNumber && total) {
+    return `Parcelamento: parcela ${installmentNumber}/${total}`;
+  }
+
+  if (installmentNumber) {
+    return `Parcelamento: parcela ${installmentNumber}`;
+  }
+
+  return "Parcelamento";
 }
