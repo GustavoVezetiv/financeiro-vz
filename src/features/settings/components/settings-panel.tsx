@@ -102,6 +102,13 @@ export function SettingsPanel() {
             <FieldShell label="Moeda"><select className={inputClassName} value={values.currency} onChange={(event) => setValues({ ...values, currency: event.target.value })}>{currencyOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FieldShell>
             <FieldShell label="Fuso horário"><select className={inputClassName} value={values.timezone} onChange={(event) => setValues({ ...values, timezone: event.target.value })}>{timezoneOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></FieldShell>
             <FieldShell label="Dia inicial do mês"><input min="1" max="28" type="number" className={inputClassName} value={values.month_start_day} onChange={(event) => setValues({ ...values, month_start_day: event.target.value })} /></FieldShell>
+            <FieldShell label="Permitir edição rápida em tabelas">
+              <select className={inputClassName} value={String(values.allow_quick_table_edit)} onChange={(event) => setValues({ ...values, allow_quick_table_edit: event.target.value === "true" })}>
+                <option value="false">Desativado</option>
+                <option value="true">Ativado</option>
+              </select>
+              <p className="mt-2 text-xs text-ink-600">Quando ativado, campos simples podem ser editados direto na tabela. Vínculos sensíveis continuam no modal.</p>
+            </FieldShell>
             <div className="flex items-end justify-end"><ActionButton type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar configurações"}</ActionButton></div>
           </form>
         )}

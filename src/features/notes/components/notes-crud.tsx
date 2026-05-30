@@ -8,7 +8,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import { createNote, deleteNote, listNotes, updateNote } from "@/features/notes/queries";
 import { emptyNoteForm, noteEntityTypeOptions, noteToFormValues, type NoteFormValues, type NoteRow } from "@/features/notes/types";
-import { ActionButton, BulkActionsBar, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge, TitleButton } from "@/features/shared/crud-ui";
+import { ActionButton, BulkActionsBar, CrudFeedback, FieldShell, inputClassName, Modal, RowSelectionHint, shouldToggleRowSelection, TextBadge, TitleButton } from "@/features/shared/crud-ui";
 import { formatDate } from "@/features/shared/format";
 import { optionLabel } from "@/features/shared/options";
 import type { FeedbackState } from "@/features/shared/types";
@@ -163,6 +163,7 @@ export function NotesCrud() {
         ) : (
           <div className="grid gap-3">
             <BulkActionsBar selectedCount={selectedIds.size} deleting={deletingSelected} onClear={() => setSelectedIds(new Set())} onDelete={() => void handleBulkDelete()} />
+            <RowSelectionHint />
             <label className="flex items-center gap-2 text-sm font-medium text-ink-700">
               <input
                 type="checkbox"
@@ -180,7 +181,17 @@ export function NotesCrud() {
               Selecionar anotações filtradas
             </label>
             {filtered.map((note) => (
-              <article key={note.id} className="rounded-lg border border-ink-950/10 bg-white p-4">
+              <article
+                key={note.id}
+                className="rounded-lg border border-ink-950/10 bg-white p-4"
+                onClick={(event) => {
+                  if (!shouldToggleRowSelection(event)) return;
+                  const next = new Set(selectedIds);
+                  if (next.has(note.id)) next.delete(note.id);
+                  else next.add(note.id);
+                  setSelectedIds(next);
+                }}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <input
                     type="checkbox"

@@ -9,9 +9,13 @@ import { StatCard } from "@/components/ui/stat-card";
 import {
   createInstallment,
   deleteInstallment,
+  deletePendingGeneratedAccountsForInstallment,
   generateInstallmentAccounts,
+  listGeneratedAccountsForInstallment,
+  unlinkKeptGeneratedAccountsForInstallment,
   listInstallments,
   listInstallmentSupportData,
+  unlinkPaidGeneratedAccountsForInstallment,
   updateInstallment,
 } from "@/features/installments/queries";
 import {
@@ -214,7 +218,53 @@ export function InstallmentsCrud() {
 
   async function handleDelete(item: InstallmentRow) {
     if (!window.confirm("Excluir este parcelamento?")) return;
-    const { error } = await deleteInstallment(createClient(), item.id);
+
+    const client = createClient();
+    const generated = await listGeneratedAccountsForInstallment(client, item.id);
+
+    if (generated.error) {
+      console.error("Erro técnico ao verificar contas geradas:", generated.error);
+      setFeedback({ type: "error", message: "Não foi possível verificar contas geradas por este parcelamento." });
+      return;
+    }
+
+    const generatedAccounts = generated.data ?? [];
+    const pendingCount = generatedAccounts.filter((account) => account.status !== "paid").length;
+    const paidCount = generatedAccounts.filter((account) => account.status === "paid").length;
+
+    if (pendingCount > 0) {
+      const shouldDeletePending = window.confirm(
+        `Este parcelamento gerou ${pendingCount} conta(s) pendente(s). Deseja excluir também essas contas?`,
+      );
+
+      if (shouldDeletePending) {
+        const deleteAccountsResult = await deletePendingGeneratedAccountsForInstallment(client, item.id);
+        if (deleteAccountsResult.error) {
+          console.error("Erro técnico ao excluir contas geradas pendentes:", deleteAccountsResult.error);
+          setFeedback({ type: "error", message: "Não foi possível excluir as contas pendentes geradas." });
+          return;
+        }
+      } else {
+        const unlinkResult = await unlinkKeptGeneratedAccountsForInstallment(client, item.id);
+        if (unlinkResult.error) {
+          console.error("Erro técnico ao desvincular contas geradas mantidas:", unlinkResult.error);
+          setFeedback({ type: "error", message: "Não foi possível manter as contas geradas como histórico manual." });
+          return;
+        }
+      }
+    }
+
+    if (paidCount > 0) {
+      window.alert("Contas geradas já pagas não serão excluídas. Elas ficarão no histórico, desvinculadas do parcelamento.");
+      const unlinkResult = await unlinkPaidGeneratedAccountsForInstallment(client, item.id);
+      if (unlinkResult.error) {
+        console.error("Erro técnico ao desvincular contas pagas:", unlinkResult.error);
+        setFeedback({ type: "error", message: "Não foi possível preservar o histórico das contas pagas." });
+        return;
+      }
+    }
+
+    const { error } = await deleteInstallment(client, item.id);
     if (error) setFeedback({ type: "error", message: error.message });
     else {
       setFeedback({ type: "success", message: "Parcelamento excluído." });
@@ -361,6 +411,9 @@ function InstallmentModal({
   const [values, setValues] = useState<InstallmentFormValues>(
     modal?.mode === "edit" ? installmentToFormValues(modal.installment) : emptyInstallmentForm,
   );
+  const filteredInvoices = values.credit_card_id
+    ? invoices.filter((invoice) => invoice.credit_card_id === values.credit_card_id)
+    : [];
 
   return (
     <Modal title={modal?.mode === "edit" ? "Editar parcelamento" : "Novo parcelamento"} onClose={onClose}>
@@ -380,8 +433,14 @@ function InstallmentModal({
             {installmentOriginOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </FieldShell>
-        <FieldShell label="Cartão"><select className={inputClassName} value={values.credit_card_id} onChange={(event) => setValues({ ...values, credit_card_id: event.target.value, installment_origin: event.target.value ? "card" : values.installment_origin })}><option value="">Sem cartão</option>{cards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}</select></FieldShell>
-        <FieldShell label="Fatura"><select className={inputClassName} value={values.invoice_id} onChange={(event) => setValues({ ...values, invoice_id: event.target.value, installment_origin: event.target.value ? "invoice" : values.installment_origin })}><option value="">Sem fatura</option>{invoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.reference_month.slice(0, 7)} - {formatDate(invoice.due_date)}</option>)}</select></FieldShell>
+        <FieldShell label="Cartão"><select className={inputClassName} value={values.credit_card_id} onChange={(event) => setValues({ ...values, credit_card_id: event.target.value, invoice_id: "", installment_origin: event.target.value ? "card" : values.installment_origin })}><option value="">Sem cartão</option>{cards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}</select></FieldShell>
+        <FieldShell label="Fatura">
+          <select className={inputClassName} value={values.invoice_id} disabled={!values.credit_card_id} onChange={(event) => setValues({ ...values, invoice_id: event.target.value, installment_origin: event.target.value ? "invoice" : values.installment_origin })}>
+            <option value="">{values.credit_card_id ? "Sem fatura" : "Selecione um cartão primeiro"}</option>
+            {filteredInvoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{cards.find((card) => card.id === invoice.credit_card_id)?.name ?? "Cartão"} - {invoice.reference_month.slice(0, 7)} - vence {formatDate(invoice.due_date)} - {invoice.status}</option>)}
+          </select>
+          {!values.credit_card_id ? <p className="mt-2 text-xs text-ink-600">Selecione um cartão para listar as faturas correspondentes.</p> : null}
+        </FieldShell>
         {values.invoice_id ? (
           <div className="rounded-md border border-amberRisk-500/20 bg-amberRisk-100 p-4 text-sm leading-6 text-ink-800 md:col-span-2">
             Este parcelamento está vinculado a uma fatura. Verifique se o valor já está sendo contado na fatura.

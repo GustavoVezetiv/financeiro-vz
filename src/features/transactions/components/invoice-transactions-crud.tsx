@@ -41,6 +41,12 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
   const [categories, setCategories] = useState<TransactionCategory[]>([]);
   const [people, setPeople] = useState<TransactionPerson[]>([]);
   const [invoices, setInvoices] = useState<TransactionInvoice[]>([]);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [personFilter, setPersonFilter] = useState("all");
+  const [ownershipFilter, setOwnershipFilter] = useState("all");
+  const [reimbursableFilter, setReimbursableFilter] = useState("all");
+  const [installmentFilter, setInstallmentFilter] = useState("all");
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -48,9 +54,25 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
   const cardName = cards.find((card) => card.id === invoice?.credit_card_id)?.name ?? "Cartão";
+  const filteredTransactions = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+
+    return transactions.filter((transaction) => {
+      const isInstallment = Boolean(transaction.installment_number && transaction.installment_total);
+
+      return (
+        (!needle || transaction.description.toLowerCase().includes(needle)) &&
+        (categoryFilter === "all" || transaction.category_id === categoryFilter) &&
+        (personFilter === "all" || transaction.person_id === personFilter) &&
+        (ownershipFilter === "all" || transaction.ownership_type === ownershipFilter) &&
+        (reimbursableFilter === "all" || String(transaction.is_reimbursable) === reimbursableFilter) &&
+        (installmentFilter === "all" || String(isInstallment) === installmentFilter)
+      );
+    });
+  }, [categoryFilter, installmentFilter, ownershipFilter, personFilter, reimbursableFilter, search, transactions]);
   const summary = useMemo(
-    () => (invoice ? calculateInvoiceSummary(invoice, transactions, reimbursements) : null),
-    [invoice, reimbursements, transactions],
+    () => (invoice ? calculateInvoiceSummary(invoice, filteredTransactions, reimbursements) : null),
+    [filteredTransactions, invoice, reimbursements],
   );
 
   const loadData = useCallback(async () => {
@@ -191,12 +213,40 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
 
       {summary ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Total da fatura" value={formatCurrency(summary.invoiceTotal)} helper="Valor declarado ou soma dos lançamentos." tone="info" />
-          <StatCard label="Pendente" value={formatCurrency(summary.pendingAmount)} helper="Total menos valor pago." tone="warning" />
-          <StatCard label="Reembolsável" value={formatCurrency(summary.reimbursableAmount)} helper="Parte vinculada a terceiros ou família." tone="warning" />
-          <StatCard label="Custo pessoal líquido" value={formatCurrency(summary.netPersonalCost)} helper="Lançamentos menos reembolsos esperados." tone="success" />
+          <StatCard label="Total filtrado" value={formatCurrency(summary.transactionTotal)} helper="Soma dos lançamentos visíveis." tone="info" />
+          <StatCard label="Pendente da fatura" value={formatCurrency(summary.pendingAmount)} helper="Total declarado da fatura menos valor pago." tone="warning" />
+          <StatCard label="Reembolsável filtrado" value={formatCurrency(summary.reimbursableAmount)} helper="Parte visível vinculada a terceiros ou família." tone="warning" />
+          <StatCard label="Custo pessoal líquido" value={formatCurrency(summary.netPersonalCost)} helper="Lançamentos filtrados menos reembolsos esperados." tone="success" />
         </section>
       ) : null}
+
+      <SectionCard title="Filtros" description="Refine os lançamentos desta fatura.">
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <input className={inputClassName} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar descrição" />
+          <select className={inputClassName} value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+            <option value="all">Todas categorias</option>
+            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+          <select className={inputClassName} value={personFilter} onChange={(event) => setPersonFilter(event.target.value)}>
+            <option value="all">Todas pessoas</option>
+            {people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+          </select>
+          <select className={inputClassName} value={ownershipFilter} onChange={(event) => setOwnershipFilter(event.target.value)}>
+            <option value="all">Todos tipos</option>
+            {ownershipTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <select className={inputClassName} value={reimbursableFilter} onChange={(event) => setReimbursableFilter(event.target.value)}>
+            <option value="all">Reembolsável: todos</option>
+            <option value="true">Sim</option>
+            <option value="false">Não</option>
+          </select>
+          <select className={inputClassName} value={installmentFilter} onChange={(event) => setInstallmentFilter(event.target.value)}>
+            <option value="all">Parcelada: todas</option>
+            <option value="true">Sim</option>
+            <option value="false">Não</option>
+          </select>
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="Aviso financeiro"
@@ -213,6 +263,8 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
           <p className="text-sm text-ink-600">Carregando lançamentos...</p>
         ) : transactions.length === 0 ? (
           <EmptyState title="Nenhum lançamento" description="Cadastre compras da fatura e marque o que é reembolsável." />
+        ) : filteredTransactions.length === 0 ? (
+          <EmptyState title="Nenhum lançamento encontrado" description="Ajuste os filtros para ver outros lançamentos desta fatura." />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
@@ -229,7 +281,7 @@ export function InvoiceTransactionsCrud({ invoiceId }: { invoiceId: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-950/10">
-                {transactions.map((transaction) => (
+                {filteredTransactions.map((transaction) => (
                   <tr key={transaction.id}>
                     <td className="px-4 py-3 text-ink-600">{formatDate(transaction.transaction_date)}</td>
                     <td className="px-4 py-3 font-medium text-ink-950">{transaction.description}</td>
@@ -317,6 +369,9 @@ function TransactionModal({
   const [values, setValues] = useState<TransactionFormValues>(initialValues);
   const requiresPerson = values.ownership_type !== "personal";
   const canCreateReimbursement = values.is_reimbursable && values.person_id && requiresPerson;
+  const filteredInvoices = values.credit_card_id
+    ? invoices.filter((invoice) => invoice.credit_card_id === values.credit_card_id)
+    : [];
 
   return (
     <Modal
@@ -336,7 +391,7 @@ function TransactionModal({
             required
             className={inputClassName}
             value={values.credit_card_id}
-            onChange={(event) => setValues({ ...values, credit_card_id: event.target.value })}
+            onChange={(event) => setValues({ ...values, credit_card_id: event.target.value, invoice_id: "" })}
           >
             <option value="">Selecione</option>
             {cards.map((card) => (
@@ -350,14 +405,18 @@ function TransactionModal({
             className={inputClassName}
             value={values.invoice_id}
             onChange={(event) => setValues({ ...values, invoice_id: event.target.value })}
+            disabled={!values.credit_card_id}
           >
-            <option value="">Selecione</option>
-            {invoices.map((invoice) => (
+            <option value="">{values.credit_card_id ? "Selecione" : "Selecione um cartão primeiro"}</option>
+            {filteredInvoices.map((invoice) => (
               <option key={invoice.id} value={invoice.id}>
-                {invoice.reference_month.slice(0, 7)} - {formatDate(invoice.due_date)}
+                {cards.find((card) => card.id === invoice.credit_card_id)?.name ?? "Cartão"} - {invoice.reference_month.slice(0, 7)} - vence {formatDate(invoice.due_date)} - {invoice.status}
               </option>
             ))}
           </select>
+          {!values.credit_card_id ? (
+            <p className="mt-2 text-xs text-ink-600">Selecione um cartão para listar as faturas correspondentes.</p>
+          ) : null}
         </FieldShell>
         <FieldShell label="Data">
           <input

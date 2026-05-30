@@ -29,6 +29,7 @@ export type Profile = {
   currency: string;
   timezone: string;
   month_start_day: number;
+  allow_quick_table_edit: boolean;
   created_at: string;
   updated_at: string;
 };

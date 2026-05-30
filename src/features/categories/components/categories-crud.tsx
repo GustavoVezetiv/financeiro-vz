@@ -16,6 +16,7 @@ import {
   TitleButton,
 } from "@/features/shared/crud-ui";
 import { categoryTypeOptions, optionLabel } from "@/features/shared/options";
+import { CategoryIcon, categoryIconOptions } from "@/features/shared/category-icons";
 import type { FeedbackState } from "@/features/shared/types";
 import {
   createCategory,
@@ -36,22 +37,6 @@ type ModalState =
   | { mode: "create"; category: null }
   | { mode: "edit"; category: CategoryRow }
   | null;
-
-const categoryIconSuggestions = [
-  { label: "Casa", value: "casa" },
-  { label: "Carro", value: "carro" },
-  { label: "Cartão", value: "cartao" },
-  { label: "Comida", value: "comida" },
-  { label: "Mercado", value: "mercado" },
-  { label: "Saúde", value: "saude" },
-  { label: "Estudo", value: "estudo" },
-  { label: "Trabalho", value: "trabalho" },
-  { label: "Lazer", value: "lazer" },
-  { label: "Assinatura", value: "assinatura" },
-  { label: "Família", value: "familia" },
-  { label: "Viagem", value: "viagem" },
-  { label: "Outros", value: "outros" },
-];
 
 export function CategoriesCrud() {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -249,7 +234,12 @@ export function CategoriesCrud() {
                     <td className="px-4 py-3">
                       <CategoryBadge category={category} />
                     </td>
-                    <td className="px-4 py-3 text-ink-600">{category.icon ?? "-"}</td>
+                    <td className="px-4 py-3 text-ink-600">
+                      <span className="inline-flex items-center gap-2">
+                        <CategoryIcon value={category.icon} />
+                        <span>{category.icon ?? "-"}</span>
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <BooleanBadge value={category.is_default} />
                     </td>
@@ -353,17 +343,22 @@ function CategoryModal({
           <input
             value={values.icon}
             onChange={(event) => setValues({ ...values, icon: event.target.value })}
-            placeholder="Ex.: casa, cartao, mercado"
+            placeholder="Ex.: casa, cartao, mercado ou cole um emoji"
             className={inputClassName}
           />
-          <div className="mt-2 flex flex-wrap gap-2">
-            {categoryIconSuggestions.map((suggestion) => (
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {categoryIconOptions.map((suggestion) => (
               <button
                 key={suggestion.value}
                 type="button"
                 onClick={() => setValues({ ...values, icon: suggestion.value })}
-                className="rounded-full border border-ink-950/10 bg-white px-2.5 py-1 text-xs font-medium text-ink-700 transition hover:border-mint-500 hover:text-mint-600"
+                className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs font-medium transition ${
+                  values.icon === suggestion.value
+                    ? "border-mint-500 bg-mint-50 text-mint-700"
+                    : "border-ink-950/10 bg-white text-ink-700 hover:border-mint-500 hover:text-mint-600"
+                }`}
               >
+                <CategoryIcon value={suggestion.value} />
                 {suggestion.label}
               </button>
             ))}

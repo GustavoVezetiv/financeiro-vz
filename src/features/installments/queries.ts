@@ -15,7 +15,7 @@ export async function listInstallments(client: AppSupabaseClient) {
 export async function listInstallmentSupportData(client: AppSupabaseClient) {
   const [cards, invoices, categories, people] = await Promise.all([
     client.from("credit_cards").select("id,name").order("name", { ascending: true }),
-    client.from("credit_card_invoices").select("id,reference_month,due_date").order("due_date", { ascending: false }),
+    client.from("credit_card_invoices").select("id,credit_card_id,reference_month,due_date,status").order("due_date", { ascending: false }),
     client.from("categories").select("id,name").order("name", { ascending: true }),
     client.from("people").select("id,name").order("name", { ascending: true }),
   ]);
@@ -41,6 +41,50 @@ export async function updateInstallment(client: AppSupabaseClient, id: string, v
 
 export async function deleteInstallment(client: AppSupabaseClient, id: string) {
   return client.from("installments").delete().eq("id", id);
+}
+
+export async function listGeneratedAccountsForInstallment(client: AppSupabaseClient, installmentId: string) {
+  return client
+    .from("accounts_payable")
+    .select("id,title,status,amount,due_date")
+    .eq("installment_id", installmentId)
+    .eq("is_generated", true);
+}
+
+export async function unlinkPaidGeneratedAccountsForInstallment(client: AppSupabaseClient, installmentId: string) {
+  return client
+    .from("accounts_payable")
+    .update({
+      installment_id: null,
+      source_type: "manual",
+      source_id: null,
+      is_generated: false,
+    })
+    .eq("installment_id", installmentId)
+    .eq("is_generated", true)
+    .eq("status", "paid");
+}
+
+export async function unlinkKeptGeneratedAccountsForInstallment(client: AppSupabaseClient, installmentId: string) {
+  return client
+    .from("accounts_payable")
+    .update({
+      installment_id: null,
+      source_type: "manual",
+      source_id: null,
+      is_generated: false,
+    })
+    .eq("installment_id", installmentId)
+    .eq("is_generated", true);
+}
+
+export async function deletePendingGeneratedAccountsForInstallment(client: AppSupabaseClient, installmentId: string) {
+  return client
+    .from("accounts_payable")
+    .delete()
+    .eq("installment_id", installmentId)
+    .eq("is_generated", true)
+    .neq("status", "paid");
 }
 
 export async function generateInstallmentAccounts(
