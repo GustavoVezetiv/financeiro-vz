@@ -1,10 +1,11 @@
-import type { IncomeSource, Installment, PaymentPlanItem, Reimbursement } from "@/lib/supabase/types";
+import type { AccountPayable, IncomeSource, Installment, PaymentPlanItem, Reimbursement } from "@/lib/supabase/types";
 
 export type SimulationInputs = {
   items: PaymentPlanItem[];
   incomeSources: IncomeSource[];
   reimbursements: Reimbursement[];
   installments: Installment[];
+  accounts?: AccountPayable[];
 };
 
 export function calculatePaymentPlanScenario({
@@ -12,6 +13,7 @@ export function calculatePaymentPlanScenario({
   incomeSources,
   reimbursements,
   installments,
+  accounts = [],
 }: SimulationInputs) {
   const sumByDecision = (decision: string) =>
     items.filter((item) => item.decision === decision).reduce((sum, item) => sum + Number(item.amount), 0);
@@ -43,8 +45,13 @@ export function calculatePaymentPlanScenario({
     .filter((item) => item.risk_level === "high")
     .reduce((sum, item) => sum + Number(item.amount), 0);
 
+  const generatedInstallmentIds = new Set(
+    accounts
+      .filter((item) => item.installment_id && item.is_generated && item.source_type === "installment")
+      .map((item) => item.installment_id as string),
+  );
   const activeInstallmentAmount = installments
-    .filter((item) => item.status === "active" && !item.invoice_id)
+    .filter((item) => item.status === "active" && !item.invoice_id && !generatedInstallmentIds.has(item.id))
     .reduce((sum, item) => sum + Number(item.installment_amount), 0);
   const pendingObligations = items
     .filter((item) => !["income_source", "reimbursement"].includes(item.item_type))

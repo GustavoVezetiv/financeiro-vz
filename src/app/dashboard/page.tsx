@@ -502,8 +502,13 @@ function buildDashboardSummary(
   );
 
   const estimatedNetPersonalCost = Math.max(openInvoiceTotal - openReimbursements, 0);
+  const generatedInstallmentIds = new Set(
+    accounts
+      .filter((account) => account.installment_id && account.is_generated && account.source_type === "installment")
+      .map((account) => account.installment_id as string),
+  );
   const activeInstallmentMonthlyAmount = installments
-    .filter((item) => item.status === "active" && !item.invoice_id)
+    .filter((item) => item.status === "active" && !item.invoice_id && !generatedInstallmentIds.has(item.id))
     .reduce((total, item) => total + Number(item.installment_amount), 0);
 
   const activePlannedPurchases = plannedPurchases.filter((item) =>
@@ -521,6 +526,7 @@ function buildDashboardSummary(
         incomeSources,
         reimbursements,
         installments,
+        accounts,
       })
     : null;
 

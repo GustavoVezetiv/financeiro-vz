@@ -12,6 +12,7 @@ import {
   FieldShell,
   inputClassName,
   Modal,
+  TitleButton,
 } from "@/features/shared/crud-ui";
 import { peopleTypeOptions, optionLabel } from "@/features/shared/options";
 import type { FeedbackState } from "@/features/shared/types";
@@ -194,7 +195,11 @@ export function PeopleCrud() {
               <tbody className="divide-y divide-ink-950/10">
                 {filteredPeople.map((person) => (
                   <tr key={person.id}>
-                    <td className="px-4 py-3 font-medium text-ink-950">{person.name}</td>
+                    <td className="px-4 py-3">
+                      <TitleButton onClick={() => setModal({ mode: "edit", person })}>
+                        {person.name}
+                      </TitleButton>
+                    </td>
                     <td className="px-4 py-3 text-ink-600">
                       {optionLabel(peopleTypeOptions, person.relationship_type)}
                     </td>
@@ -340,4 +345,3 @@ function PersonModal({
     </Modal>
   );
 }
-

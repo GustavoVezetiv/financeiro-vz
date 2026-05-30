@@ -31,6 +31,7 @@ export type InstallmentFormValues = {
   person_id: string;
   installment_origin: InstallmentOrigin;
   status: string;
+  generate_accounts: boolean;
   notes: string;
 };
 
@@ -48,6 +49,7 @@ export const emptyInstallmentForm: InstallmentFormValues = {
   person_id: "",
   installment_origin: "other",
   status: "active",
+  generate_accounts: false,
   notes: "",
 };
 
@@ -66,6 +68,7 @@ export function installmentToFormValues(item: InstallmentRow): InstallmentFormVa
     person_id: item.person_id ?? "",
     installment_origin: (item.installment_origin as InstallmentOrigin | null) ?? inferInstallmentOrigin(item),
     status: item.status,
+    generate_accounts: false,
     notes: item.notes ?? "",
   };
 }

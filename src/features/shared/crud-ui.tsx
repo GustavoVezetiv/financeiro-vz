@@ -139,20 +139,94 @@ export function TextBadge({ children, tone = "neutral" }: { children: React.Reac
 export type CategoryBadgeCategory = Pick<Category, "id" | "name" | "type" | "color" | "icon">;
 
 export function CategoryBadge({ category }: { category?: CategoryBadgeCategory | null }) {
-  const color = category?.color?.trim() || "#64748b";
-  const icon = category?.icon?.trim() || "•";
+  const color = category?.color?.trim();
+  const icon = category?.icon?.trim();
   const label = category?.name || "Sem categoria";
+  const safeColor = color && isValidHexColor(color) ? color : null;
+  const textColor = safeColor ? getReadableTextColor(safeColor) : undefined;
 
   return (
-    <span className="inline-flex max-w-[13rem] items-center gap-1.5 rounded-full border border-ink-950/10 bg-white px-2.5 py-1 text-xs font-medium text-ink-700">
-      <span
-        className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-        style={{ backgroundColor: color }}
-        aria-hidden="true"
-      >
-        {icon.slice(0, 2)}
-      </span>
+    <span
+      className={[
+        "inline-flex max-w-[13rem] items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
+        safeColor ? "border-transparent" : "border-ink-950/10 bg-slate-100 text-ink-700",
+      ].join(" ")}
+      style={safeColor ? { backgroundColor: safeColor, color: textColor } : undefined}
+    >
+      {icon ? <span className="max-w-12 truncate" aria-hidden="true">{icon}</span> : null}
       <span className="truncate">{label}</span>
     </span>
   );
+}
+
+export function TitleButton({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left font-medium text-ink-950 underline-offset-4 transition hover:text-mint-600 hover:underline"
+    >
+      {children}
+    </button>
+  );
+}
+
+export function BulkActionsBar({
+  selectedCount,
+  deleting,
+  onClear,
+  onDelete,
+}: {
+  selectedCount: number;
+  deleting: boolean;
+  onClear: () => void;
+  onDelete: () => void;
+}) {
+  if (selectedCount === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-ink-950/10 bg-slate-50 px-4 py-3">
+      <p className="text-sm font-medium text-ink-800">
+        {selectedCount} item(ns) selecionado(s)
+      </p>
+      <div className="flex gap-2">
+        <ActionButton type="button" variant="secondary" onClick={onClear} disabled={deleting}>
+          Limpar seleção
+        </ActionButton>
+        <ActionButton type="button" variant="danger" onClick={onDelete} disabled={deleting}>
+          {deleting ? "Excluindo..." : "Excluir selecionados"}
+        </ActionButton>
+      </div>
+    </div>
+  );
+}
+
+function isValidHexColor(value: string) {
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value);
+}
+
+function getReadableTextColor(hex: string) {
+  const normalized = normalizeHex(hex);
+  const red = Number.parseInt(normalized.slice(1, 3), 16);
+  const green = Number.parseInt(normalized.slice(3, 5), 16);
+  const blue = Number.parseInt(normalized.slice(5, 7), 16);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+
+  return luminance > 0.58 ? "#0f172a" : "#ffffff";
+}
+
+function normalizeHex(hex: string) {
+  if (hex.length === 4) {
+    return `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+  }
+
+  return hex;
 }

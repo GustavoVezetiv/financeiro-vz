@@ -15,7 +15,7 @@ import { formatCurrency, formatDate } from "@/features/shared/format";
 import { optionLabel, paymentDecisionOptions, paymentPlanItemTypeOptions, planItemStatusOptions, priorityOptions } from "@/features/shared/options";
 import type { FeedbackState } from "@/features/shared/types";
 import { createClient } from "@/lib/supabase/client";
-import type { IncomeSource, Installment, Reimbursement } from "@/lib/supabase/types";
+import type { AccountPayable, IncomeSource, Installment, Reimbursement } from "@/lib/supabase/types";
 
 type ModalState = { mode: "create"; item: null } | { mode: "edit"; item: PaymentPlanItemRow } | null;
 
@@ -26,6 +26,7 @@ export function PaymentPlanDetail({ planId }: { planId: string }) {
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
   const [reimbursements, setReimbursements] = useState<Reimbursement[]>([]);
   const [installments, setInstallments] = useState<Installment[]>([]);
+  const [accounts, setAccounts] = useState<AccountPayable[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -33,8 +34,8 @@ export function PaymentPlanDetail({ planId }: { planId: string }) {
   const [feedback, setFeedback] = useState<FeedbackState>(null);
 
   const simulation = useMemo(
-    () => calculatePaymentPlanScenario({ items, incomeSources, reimbursements, installments }),
-    [incomeSources, installments, items, reimbursements],
+    () => calculatePaymentPlanScenario({ items, incomeSources, reimbursements, installments, accounts }),
+    [accounts, incomeSources, installments, items, reimbursements],
   );
 
   const loadData = useCallback(async () => {
@@ -67,6 +68,7 @@ export function PaymentPlanDetail({ planId }: { planId: string }) {
     setIncomeSources(simulationResult.incomeSources.data ?? []);
     setReimbursements(simulationResult.reimbursements.data ?? []);
     setInstallments(simulationResult.installments.data ?? []);
+    setAccounts(simulationResult.accounts.data ?? []);
     setLoading(false);
   }, [planId]);
 
@@ -215,7 +217,14 @@ function PaymentPlanItemModal({ modal, saving, sources, onClose, onSubmit }: { m
 }
 
 function buildSourceOptions(itemType: string, sources: PlanSourceData) {
-  if (itemType === "account_payable") return sources.accounts.map((item) => ({ id: item.id, label: item.title, amount: Number(item.amount), date: item.due_date }));
+  if (itemType === "account_payable") {
+    return sources.accounts.map((item) => ({
+      id: item.id,
+      label: item.installment_id && item.is_generated ? `${item.title} (parcela gerada)` : item.title,
+      amount: Number(item.amount),
+      date: item.due_date,
+    }));
+  }
   if (itemType === "credit_card_invoice") return sources.invoices.map((item) => ({ id: item.id, label: `Fatura ${item.reference_month.slice(0, 7)}`, amount: Number(item.total_amount) - Number(item.paid_amount), date: item.due_date }));
   if (itemType === "installment") return sources.installments.map((item) => ({ id: item.id, label: item.description, amount: Number(item.installment_amount), date: item.due_month }));
   if (itemType === "reimbursement") return sources.reimbursements.map((item) => ({ id: item.id, label: item.description ?? "Reembolso", amount: Number(item.expected_amount) - Number(item.received_amount), date: item.expected_date ?? "" }));

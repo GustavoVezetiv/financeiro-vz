@@ -100,12 +100,17 @@ export function buildFinancialSummary(data: FinancialDataset, period?: PeriodVal
       openInvoiceStatuses.has(invoice.status) &&
       isWithin(invoice.due_date, boundaries.nextMonthStart, boundaries.nextMonthEnd),
   );
+  const generatedCurrentInstallmentIds = getGeneratedInstallmentIds(data.accounts, boundaries.monthStart, boundaries.monthEnd);
+  const generatedNextMonthInstallmentIds = getGeneratedInstallmentIds(data.accounts, boundaries.nextMonthStart, boundaries.nextMonthEnd);
   const activeInstallments = data.installments.filter((installment) => installment.status === "active");
-  const countableInstallments = activeInstallments.filter((installment) => !installment.invoice_id);
-  const currentInstallments = countableInstallments.filter((installment) =>
+  const currentInstallments = activeInstallments.filter((installment) =>
+    !installment.invoice_id &&
+    !generatedCurrentInstallmentIds.has(installment.id) &&
     isWithin(installment.due_month, boundaries.monthStart, boundaries.monthEnd),
   );
-  const nextMonthInstallments = countableInstallments.filter((installment) =>
+  const nextMonthInstallments = activeInstallments.filter((installment) =>
+    !installment.invoice_id &&
+    !generatedNextMonthInstallmentIds.has(installment.id) &&
     isWithin(installment.due_month, boundaries.nextMonthStart, boundaries.nextMonthEnd),
   );
   const openReimbursements = data.reimbursements.filter((item) =>
@@ -195,6 +200,19 @@ export function buildFinancialSummary(data: FinancialDataset, period?: PeriodVal
     highRiskItems: buildHighRiskItems(currentAccounts, currentInvoices),
     flowRows: buildFlowRows(currentAccounts, currentIncome, currentInvoices, currentInstallments, currentReimbursements),
   };
+}
+
+function getGeneratedInstallmentIds(accounts: AccountPayable[], start: string, end: string) {
+  return new Set(
+    accounts
+      .filter((account) =>
+        account.installment_id &&
+        account.is_generated &&
+        account.source_type === "installment" &&
+        isWithin(account.due_date, start, end),
+      )
+      .map((account) => account.installment_id as string),
+  );
 }
 
 export function invoiceOpenAmount(invoice: CreditCardInvoice) {
