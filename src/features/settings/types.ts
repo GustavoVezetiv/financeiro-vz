@@ -7,6 +7,7 @@ export type SettingsFormValues = {
   currency: string;
   timezone: string;
   month_start_day: string;
+  allow_quick_table_edit: boolean;
 };
 
 export const currencyOptions = [
@@ -28,5 +29,6 @@ export function profileToFormValues(profile: ProfileRow | null): SettingsFormVal
     currency: profile?.currency ?? "BRL",
     timezone: profile?.timezone ?? "America/Cuiaba",
     month_start_day: String(profile?.month_start_day ?? 1),
+    allow_quick_table_edit: profile?.allow_quick_table_edit ?? false,
   };
 }

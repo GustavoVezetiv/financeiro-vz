@@ -8,7 +8,7 @@ import { SectionCard } from "@/components/ui/section-card";
 import { StatCard } from "@/components/ui/stat-card";
 import { createPlannedPurchase, deletePlannedPurchase, listPlannedPurchases, listPlannedPurchaseSupportData, updatePlannedPurchase } from "@/features/planned-purchases/queries";
 import { decisionStatusOptions, emptyPlannedPurchaseForm, plannedPurchaseToFormValues, type PlannedPurchaseFormValues, type PlannedPurchaseRow, type PlannedPurchaseSupportData } from "@/features/planned-purchases/types";
-import { ActionButton, BulkActionsBar, CategoryBadge, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge, TitleButton } from "@/features/shared/crud-ui";
+import { ActionButton, BulkActionsBar, CategoryBadge, CrudFeedback, FieldShell, inputClassName, Modal, RowSelectionHint, shouldToggleRowSelection, TextBadge, TitleButton } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { optionLabel, paymentMethodOptions, priorityOptions } from "@/features/shared/options";
 import { PeriodFilter } from "@/features/shared/period-filter";
@@ -217,6 +217,7 @@ export function PlannedPurchasesCrud() {
             onClear={() => setSelectedIds(new Set())}
             onDelete={() => void handleBulkDelete()}
           />
+          <RowSelectionHint />
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600">
@@ -248,7 +249,17 @@ export function PlannedPurchasesCrud() {
               </thead>
               <tbody className="divide-y divide-ink-950/10">
                 {filtered.map((item) => (
-                  <tr key={item.id}>
+                  <tr
+                    key={item.id}
+                    onClick={(event) => {
+                      if (!shouldToggleRowSelection(event)) return;
+                      const next = new Set(selectedIds);
+                      if (next.has(item.id)) next.delete(item.id);
+                      else next.add(item.id);
+                      setSelectedIds(next);
+                    }}
+                    className="cursor-default"
+                  >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"

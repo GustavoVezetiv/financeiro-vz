@@ -14,6 +14,8 @@ import {
   FieldShell,
   inputClassName,
   Modal,
+  RowSelectionHint,
+  shouldToggleRowSelection,
   TextBadge,
   TitleButton,
 } from "@/features/shared/crud-ui";
@@ -78,6 +80,7 @@ export function AccountsPayableCrud() {
   const [cardPaymentModal, setCardPaymentModal] = useState<CardPaymentModalState>(null);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [allowQuickTableEdit, setAllowQuickTableEdit] = useState(false);
 
   const periodAccounts = useMemo(() => {
     return accounts.filter((account) => isDateInPeriod(account.due_date, period));
@@ -158,9 +161,10 @@ export function AccountsPayableCrud() {
 
       setUserId(user.id);
 
-      const [accountsResult, support] = await Promise.all([
+      const [accountsResult, support, profileResult] = await Promise.all([
         listAccountsPayable(client),
         listAccountSupportData(client),
+        client.from("profiles").select("allow_quick_table_edit").eq("id", user.id).maybeSingle(),
       ]);
 
       if (accountsResult.error) {
@@ -197,6 +201,7 @@ export function AccountsPayableCrud() {
       setInstallments(support.installments.data ?? []);
       setCards(support.cards.data ?? []);
       setInvoices(support.invoices.data ?? []);
+      if (!profileResult.error) setAllowQuickTableEdit(Boolean(profileResult.data?.allow_quick_table_edit));
     } catch (error) {
       setFeedback({
         type: "error",
@@ -390,6 +395,28 @@ export function AccountsPayableCrud() {
     }
   }
 
+  async function handleQuickUpdate(account: AccountPayableRow, patch: Partial<AccountPayableFormValues>) {
+    setFeedback(null);
+
+    try {
+      const result = await updateAccountPayable(createClient(), account.id, {
+        ...accountToFormValues(account),
+        ...patch,
+      });
+
+      if (result.error) {
+        console.error("Erro técnico ao editar conta rapidamente:", result.error);
+        setFeedback({ type: "error", message: "Não foi possível salvar a edição rápida." });
+        return;
+      }
+
+      await loadAccounts();
+    } catch (error) {
+      console.error("Erro técnico ao editar conta rapidamente:", error);
+      setFeedback({ type: "error", message: "Não foi possível salvar a edição rápida." });
+    }
+  }
+
   async function handleBulkDelete() {
     const ids = Array.from(selectedIds);
 
@@ -488,6 +515,7 @@ export function AccountsPayableCrud() {
             onClear={() => setSelectedIds(new Set())}
             onDelete={() => void handleBulkDelete()}
           />
+          <RowSelectionHint />
           <AccountsTable
             accounts={filteredAccounts}
             categories={categories}
@@ -497,6 +525,8 @@ export function AccountsPayableCrud() {
             onDelete={(account) => void handleDelete(account)}
             onGenerate={(account) => void handleGenerateRecurring(account)}
             onPayWithCard={(account) => setCardPaymentModal({ account })}
+            onQuickUpdate={(account, patch) => void handleQuickUpdate(account, patch)}
+            allowQuickTableEdit={allowQuickTableEdit}
             generatingId={generatingId}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
@@ -538,6 +568,8 @@ function AccountsTable({
   onDelete,
   onGenerate,
   onPayWithCard,
+  onQuickUpdate,
+  allowQuickTableEdit,
   generatingId,
   selectedIds,
   onSelectionChange,
@@ -550,6 +582,8 @@ function AccountsTable({
   onDelete: (account: AccountPayableRow) => void;
   onGenerate: (account: AccountPayableRow) => void;
   onPayWithCard: (account: AccountPayableRow) => void;
+  onQuickUpdate: (account: AccountPayableRow, patch: Partial<AccountPayableFormValues>) => void;
+  allowQuickTableEdit: boolean;
   generatingId: string | null;
   selectedIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
@@ -572,6 +606,11 @@ function AccountsTable({
     if (checked) next.add(id);
     else next.delete(id);
     onSelectionChange(next);
+  }
+
+  function handleRowClick(event: React.MouseEvent<HTMLTableRowElement>, id: string) {
+    if (!shouldToggleRowSelection(event)) return;
+    toggleOne(id, !selectedIds.has(id));
   }
 
   return (
@@ -601,7 +640,7 @@ function AccountsTable({
         </thead>
         <tbody className="divide-y divide-ink-950/10">
           {accounts.map((account) => (
-            <tr key={account.id}>
+            <tr key={account.id} onClick={(event) => handleRowClick(event, account.id)} className="cursor-default">
               <td className="px-4 py-3">
                 <input
                   type="checkbox"
@@ -610,9 +649,17 @@ function AccountsTable({
                   aria-label={`Selecionar ${account.title}`}
                 />
               </td>
-              <td className="px-4 py-3 text-ink-600">{formatDate(account.due_date)}</td>
+              <td className="px-4 py-3 text-ink-600">
+                {allowQuickTableEdit && !account.is_generated ? (
+                  <QuickEditInput type="date" value={account.due_date} onCommit={(value) => onQuickUpdate(account, { due_date: value })} />
+                ) : formatDate(account.due_date)}
+              </td>
               <td className="px-4 py-3">
-                <TitleButton onClick={() => onEdit(account)}>{account.title}</TitleButton>
+                {allowQuickTableEdit && !account.is_generated ? (
+                  <QuickEditInput value={account.title} onCommit={(value) => onQuickUpdate(account, { title: value })} />
+                ) : (
+                  <TitleButton onClick={() => onEdit(account)}>{account.title}</TitleButton>
+                )}
                 {account.installment_id ? (
                   <p className="text-xs font-medium text-mint-600">
                     {getInstallmentOriginLabel(account, installments)}
@@ -620,8 +667,18 @@ function AccountsTable({
                 ) : null}
                 <p className="text-xs text-ink-600">{account.description ?? "-"}</p>
               </td>
-              <td className="px-4 py-3 font-medium text-ink-950">{formatCurrency(Number(account.amount))}</td>
-              <td className="px-4 py-3"><CategoryBadge category={categories.find((category) => category.id === account.category_id)} /></td>
+              <td className="px-4 py-3 font-medium text-ink-950">
+                {allowQuickTableEdit && !account.is_generated ? (
+                  <QuickEditInput type="number" value={String(account.amount)} onCommit={(value) => onQuickUpdate(account, { amount: value })} />
+                ) : formatCurrency(Number(account.amount))}
+              </td>
+              <td className="px-4 py-3">
+                {allowQuickTableEdit && !account.is_generated ? (
+                  <QuickEditSelect value={account.category_id ?? ""} options={[{ value: "", label: "Sem categoria" }, ...categories.map((category) => ({ value: category.id, label: category.name }))]} onCommit={(value) => onQuickUpdate(account, { category_id: value })} />
+                ) : (
+                  <CategoryBadge category={categories.find((category) => category.id === account.category_id)} />
+                )}
+              </td>
               <td className="px-4 py-3 text-ink-600">{people.find((person) => person.id === account.person_id)?.name ?? "-"}</td>
               <td className="px-4 py-3">
                 {account.installment_id ? (
@@ -634,7 +691,11 @@ function AccountsTable({
                   <span className="text-ink-500">Manual</span>
                 )}
               </td>
-              <td className="px-4 py-3 text-ink-600">{optionLabel(priorityOptions, account.priority)}</td>
+              <td className="px-4 py-3 text-ink-600">
+                {allowQuickTableEdit && !account.is_generated ? (
+                  <QuickEditSelect value={account.priority} options={priorityOptions} onCommit={(value) => onQuickUpdate(account, { priority: value })} />
+                ) : optionLabel(priorityOptions, account.priority)}
+              </td>
               <td className="px-4 py-3">
                 {account.is_recurring ? (
                   <TextBadge tone={account.recurrence_parent_id ? "info" : "warning"}>
@@ -644,7 +705,11 @@ function AccountsTable({
                   <span className="text-ink-500">-</span>
                 )}
               </td>
-              <td className="px-4 py-3 text-ink-600">{optionLabel(accountStatusOptions, account.status)}</td>
+              <td className="px-4 py-3 text-ink-600">
+                {allowQuickTableEdit ? (
+                  <QuickEditSelect value={account.status} options={accountStatusOptions} onCommit={(value) => onQuickUpdate(account, { status: value })} />
+                ) : optionLabel(accountStatusOptions, account.status)}
+              </td>
               <td className="px-4 py-3">
                 <div className="flex justify-end gap-2">
                   {account.is_recurring && !account.recurrence_parent_id ? (
@@ -668,6 +733,63 @@ function AccountsTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function QuickEditInput({
+  value,
+  type = "text",
+  onCommit,
+}: {
+  value: string;
+  type?: "text" | "number" | "date";
+  onCommit: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  function commit() {
+    if (draft !== value) onCommit(draft);
+  }
+
+  return (
+    <input
+      className="w-full min-w-28 rounded-md border border-ink-950/10 bg-white px-2 py-1 text-sm text-ink-950"
+      type={type}
+      step={type === "number" ? "0.01" : undefined}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") setDraft(value);
+      }}
+    />
+  );
+}
+
+function QuickEditSelect({
+  value,
+  options,
+  onCommit,
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onCommit: (value: string) => void;
+}) {
+  return (
+    <select
+      className="w-full min-w-32 rounded-md border border-ink-950/10 bg-white px-2 py-1 text-sm text-ink-950"
+      value={value}
+      onChange={(event) => onCommit(event.target.value)}
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>{option.label}</option>
+      ))}
+    </select>
   );
 }
 

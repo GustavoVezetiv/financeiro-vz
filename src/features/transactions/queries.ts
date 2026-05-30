@@ -6,7 +6,7 @@ export async function listTransactionSupportData(client: AppSupabaseClient) {
     client.from("credit_cards").select("id,name").order("name", { ascending: true }),
     client
       .from("credit_card_invoices")
-      .select("id,credit_card_id,reference_month,due_date")
+      .select("id,credit_card_id,reference_month,due_date,status")
       .order("due_date", { ascending: false }),
     client.from("categories").select("id,name,type,color,icon").order("name", { ascending: true }),
     client.from("people").select("id,name").order("name", { ascending: true }),

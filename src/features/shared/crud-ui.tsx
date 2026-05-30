@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type MouseEvent } from "react";
 
 import { StatusBadge, type StatusTone } from "@/components/ui/status-badge";
+import { CategoryIcon } from "@/features/shared/category-icons";
 import type { Category } from "@/lib/supabase/types";
 
 type FieldShellProps = {
@@ -153,7 +154,7 @@ export function CategoryBadge({ category }: { category?: CategoryBadgeCategory |
       ].join(" ")}
       style={safeColor ? { backgroundColor: safeColor, color: textColor } : undefined}
     >
-      {icon ? <span className="max-w-12 truncate" aria-hidden="true">{icon}</span> : null}
+      {icon ? <CategoryIcon value={icon} /> : null}
       <span className="truncate">{label}</span>
     </span>
   );
@@ -207,6 +208,28 @@ export function BulkActionsBar({
       </div>
     </div>
   );
+}
+
+export function RowSelectionHint() {
+  return (
+    <p className="mb-3 text-xs font-medium text-ink-600">
+      Use Ctrl + clique na linha para selecionar rapidamente.
+    </p>
+  );
+}
+
+export function shouldToggleRowSelection(event: MouseEvent<HTMLElement>) {
+  if (!event.ctrlKey && !event.metaKey) {
+    return false;
+  }
+
+  const target = event.target;
+
+  if (target instanceof HTMLElement && target.closest("button,input,select,textarea,a,label")) {
+    return false;
+  }
+
+  return true;
 }
 
 function isValidHexColor(value: string) {

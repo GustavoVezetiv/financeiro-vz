@@ -2,7 +2,7 @@ import type { Category, CreditCard, CreditCardInvoice, Installment, Person } fro
 
 export type InstallmentRow = Installment;
 export type InstallmentCard = Pick<CreditCard, "id" | "name">;
-export type InstallmentInvoice = Pick<CreditCardInvoice, "id" | "reference_month" | "due_date">;
+export type InstallmentInvoice = Pick<CreditCardInvoice, "id" | "credit_card_id" | "reference_month" | "due_date" | "status">;
 export type InstallmentCategory = Pick<Category, "id" | "name">;
 export type InstallmentPerson = Pick<Person, "id" | "name">;
 

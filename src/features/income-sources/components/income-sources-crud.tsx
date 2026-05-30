@@ -14,6 +14,8 @@ import {
   FieldShell,
   inputClassName,
   Modal,
+  RowSelectionHint,
+  shouldToggleRowSelection,
   TextBadge,
   TitleButton,
 } from "@/features/shared/crud-ui";
@@ -355,6 +357,7 @@ export function IncomeSourcesCrud() {
             onClear={() => setSelectedIds(new Set())}
             onDelete={() => void handleBulkDelete()}
           />
+          <RowSelectionHint />
           <IncomeTable
             incomeSources={filteredIncome}
             categories={categories}
@@ -419,6 +422,11 @@ function IncomeTable({
     onSelectionChange(next);
   }
 
+  function handleRowClick(event: React.MouseEvent<HTMLTableRowElement>, id: string) {
+    if (!shouldToggleRowSelection(event)) return;
+    toggleOne(id, !selectedIds.has(id));
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
@@ -445,7 +453,7 @@ function IncomeTable({
         </thead>
         <tbody className="divide-y divide-ink-950/10">
           {incomeSources.map((income) => (
-            <tr key={income.id}>
+            <tr key={income.id} onClick={(event) => handleRowClick(event, income.id)} className="cursor-default">
               <td className="px-4 py-3">
                 <input
                   type="checkbox"

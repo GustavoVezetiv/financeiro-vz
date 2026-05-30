@@ -9,7 +9,7 @@ import type {
 
 export type TransactionRow = CreditCardTransaction;
 export type TransactionCard = Pick<CreditCard, "id" | "name">;
-export type TransactionInvoice = Pick<CreditCardInvoice, "id" | "credit_card_id" | "reference_month" | "due_date">;
+export type TransactionInvoice = Pick<CreditCardInvoice, "id" | "credit_card_id" | "reference_month" | "due_date" | "status">;
 export type TransactionCategory = Pick<Category, "id" | "name" | "type" | "color" | "icon">;
 export type TransactionPerson = Pick<Person, "id" | "name">;
 

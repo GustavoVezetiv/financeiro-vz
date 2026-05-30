@@ -24,7 +24,7 @@ import {
   type ReimbursementRow,
   type ReimbursementTransaction,
 } from "@/features/reimbursements/types";
-import { ActionButton, BulkActionsBar, CrudFeedback, FieldShell, inputClassName, Modal, TextBadge, TitleButton } from "@/features/shared/crud-ui";
+import { ActionButton, BulkActionsBar, CrudFeedback, FieldShell, inputClassName, Modal, RowSelectionHint, shouldToggleRowSelection, TextBadge, TitleButton } from "@/features/shared/crud-ui";
 import { formatCurrency, formatDate } from "@/features/shared/format";
 import { optionLabel, reimbursementStatusOptions } from "@/features/shared/options";
 import { PeriodFilter } from "@/features/shared/period-filter";
@@ -377,6 +377,7 @@ export function ReimbursementsCrud() {
             onClear={() => setSelectedIds(new Set())}
             onDelete={() => void handleBulkDelete()}
           />
+          <RowSelectionHint />
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-ink-950/10 text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-[0.12em] text-ink-600">
@@ -410,7 +411,17 @@ export function ReimbursementsCrud() {
               </thead>
               <tbody className="divide-y divide-ink-950/10">
                 {filteredReimbursements.map((reimbursement) => (
-                  <tr key={reimbursement.id}>
+                  <tr
+                    key={reimbursement.id}
+                    onClick={(event) => {
+                      if (!shouldToggleRowSelection(event)) return;
+                      const next = new Set(selectedIds);
+                      if (next.has(reimbursement.id)) next.delete(reimbursement.id);
+                      else next.add(reimbursement.id);
+                      setSelectedIds(next);
+                    }}
+                    className="cursor-default"
+                  >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
